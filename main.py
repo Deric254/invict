@@ -1,6 +1,6 @@
 """
 St. Anne Mission Hospital — ICT Command Centre v2.0
-Desktop app: pywebview + HTML UI + Excel as live database
+Local browser app + HTML UI + Excel as live database
 Enhancements: Custom departments/types, item transfers, repairs, replacements,
               classified role access, auto-audit logging, portable app builder
 """
@@ -9,7 +9,8 @@ _os.environ.setdefault("PYWEBVIEW_GUI", "edgechromium")
 _os.environ.setdefault("WEBKIT_DISABLE_COMPOSITING_MODE", "1")
 _os.environ.setdefault("PYWEBVIEW_NO_UIAUTOMATION", "1")
 
-import webview, json, os, sys, datetime, shutil, openpyxl, threading, re, hashlib, secrets
+import json, os, sys, datetime, shutil, openpyxl, threading, re, hashlib, secrets
+import http.server, socketserver, webbrowser, urllib.parse
 from openpyxl.styles import Font, PatternFill, Alignment
 from openpyxl.utils import get_column_letter
 
@@ -614,8 +615,8 @@ if "%PYTHON_CMD%"=="" (
 )
 echo Python OK: %PYTHON_CMD%
 echo.
-echo Step 2: Installing required packages...
-%PYTHON_CMD% -m pip install "pywebview==4.4.1" openpyxl --quiet
+echo Step 2: Installing required package...
+%PYTHON_CMD% -m pip install openpyxl --quiet
 echo.
 echo Step 3: Launching application...
 %PYTHON_CMD% main.py
@@ -632,8 +633,8 @@ if ! command -v python3 &> /dev/null; then
 fi
 echo "Python OK"
 echo ""
-echo "Installing packages..."
-pip3 install "pywebview==4.4.1" openpyxl --quiet
+echo "Installing package..."
+pip3 install openpyxl --quiet
 echo ""
 echo "Launching..."
 python3 main.py
@@ -681,14 +682,95 @@ SECURITY NOTE:
 # ════════════════════════════════════════════
 # LAUNCH
 # ════════════════════════════════════════════
-def main():
-    engine = ExcelEngine()
-    cfg    = ConfigEngine()
-    api    = Api(engine, cfg)
+BROWSER_BRIDGE = """
+<script>
+(function(){
+  window.pywebview = window.pywebview || {};
+  window.pywebview.api = new Proxy({}, {
+    get: function(_, name) {
+      return function() {
+        return fetch('/api/' + encodeURIComponent(name), {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({args: Array.prototype.slice.call(arguments)})
+        }).then(function(r) { return r.text(); });
+      };
+    }
+  });
+  window.addEventListener('DOMContentLoaded', function(){
+    window.dispatchEvent(new Event('pywebviewready'));
+  });
+})();
+</script>
+"""
 
-    ui_path = os.path.join(BASE_DIR, 'ui.html')
-    if not os.path.exists(ui_path):
-        print("ERROR: ui.html not found in", BASE_DIR)
+def make_handler(api, ui_path):
+    class AppHandler(http.server.BaseHTTPRequestHandler):
+        def log_message(self, fmt, *args):
+            return
+
+        def _send(self, status, body, content_type="text/plain; charset=utf-8"):
+            if isinstance(body, str):
+                body = body.encode("utf-8")
+            self.send_response(status)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def do_GET(self):
+            path = urllib.parse.urlparse(self.path).path
+            if path in ("/", "/ui.html"):
+                with open(ui_path, "r", encoding="utf-8") as f:
+                    html = f.read()
+                html = html.replace("</head>", BROWSER_BRIDGE + "\n</head>", 1)
+                self._send(200, html, "text/html; charset=utf-8")
+                return
+            self._send(404, "Not found")
+
+        def do_POST(self):
+            path = urllib.parse.urlparse(self.path).path
+            if not path.startswith("/api/"):
+                self._send(404, "Not found")
+                return
+            name = urllib.parse.unquote(path.split("/api/", 1)[1])
+            if name.startswith("_") or not hasattr(api, name):
+                self._send(404, json.dumps({"ok": False, "error": "Unknown API method"}))
+                return
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+                result = getattr(api, name)(*payload.get("args", []))
+                self._send(200, result)
+            except Exception as e:
+                self._send(500, json.dumps({"ok": False, "error": str(e)}))
+
+    return AppHandler
+
+class LocalServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
+    daemon_threads = True
+    allow_reuse_address = True
+
+def run_browser(api, ui_path):
+    server = LocalServer(("127.0.0.1", 0), make_handler(api, ui_path))
+    url = f"http://127.0.0.1:{server.server_port}/"
+    print("St. Anne ICT Command Centre is running locally.")
+    print("Open this address if the browser does not appear:")
+    print(url)
+    webbrowser.open(url)
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print("\nClosing ICT Command Centre.")
+    finally:
+        server.server_close()
+
+def run_desktop(api, ui_path):
+    try:
+        import webview
+    except Exception as e:
+        print("Desktop mode needs pywebview. Use start.bat for browser mode, or install pywebview first.")
+        print(e)
         sys.exit(1)
 
     window = webview.create_window(
@@ -704,6 +786,21 @@ def main():
     )
     api.window = window
     webview.start(debug=False, private_mode=False)
+
+def main():
+    engine = ExcelEngine()
+    cfg    = ConfigEngine()
+    api    = Api(engine, cfg)
+
+    ui_path = os.path.join(BASE_DIR, 'ui.html')
+    if not os.path.exists(ui_path):
+        print("ERROR: ui.html not found in", BASE_DIR)
+        sys.exit(1)
+
+    if "--desktop" in sys.argv:
+        run_desktop(api, ui_path)
+    else:
+        run_browser(api, ui_path)
 
 if __name__ == "__main__":
     main()
