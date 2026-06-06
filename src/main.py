@@ -636,10 +636,15 @@ class Api:
             return json.dumps({"ok": False, "error": str(e)})
 
     def get_logo_path(self):
-        """Return absolute file:/// URL to logo.png if it exists, else empty string."""
+        """Return a URL to the logo — HTTP in Electron/browser mode, file:/// in desktop mode."""
         for lname in ['logo.png','logo.jpg','logo.jpeg','LOGO.PNG','LOGO.JPG']:
             p = os.path.join(BASE_DIR, lname)
             if os.path.exists(p):
+                # In Electron/browser mode the HTTP server is running — serve via /logo
+                port = os.environ.get('ICT_HTTP_PORT')
+                if port:
+                    return f'http://127.0.0.1:{port}/logo'
+                # Desktop (pywebview) mode — file:// works fine
                 uri = p.replace(os.sep, '/'); return 'file:///' + uri
         return ''
 
@@ -895,6 +900,23 @@ def make_handler(api, ui_path, browser_mode=False):
                     html = html.replace("</head>", BROWSER_BRIDGE + "\n</head>", 1)
                 self._send(200, html, "text/html; charset=utf-8")
                 return
+            # Serve logo image over HTTP (needed in Electron mode — file:// blocked)
+            if path == "/logo":
+                for lname in ['logo.png','logo.jpg','logo.jpeg','LOGO.PNG','LOGO.JPG']:
+                    lp = os.path.join(BASE_DIR, lname)
+                    if os.path.isfile(lp):
+                        ext = os.path.splitext(lname)[1].lower()
+                        mime = 'image/jpeg' if ext in ('.jpg','.jpeg') else 'image/png'
+                        with open(lp, 'rb') as lf:
+                            data = lf.read()
+                        self.send_response(200)
+                        self.send_header('Content-Type', mime)
+                        self.send_header('Content-Length', str(len(data)))
+                        self.end_headers()
+                        self.wfile.write(data)
+                        return
+                self._send(404, "No logo")
+                return
             # Serve generated PDF reports for browser download
             if path.startswith("/reports/"):
                 fname = urllib.parse.unquote(path[len("/reports/"):])
@@ -942,6 +964,8 @@ def run_browser(api, ui_path, electron_mode=False):
     server = LocalServer(("127.0.0.1", 0), make_handler(api, ui_path, browser_mode=not electron_mode))
     port   = server.server_port
     url    = f"http://127.0.0.1:{port}/"
+    # Expose port so get_logo_path() can build an HTTP URL for the logo
+    os.environ['ICT_HTTP_PORT'] = str(port)
     if electron_mode:
         print(f"ELECTRON_PORT={port}", flush=True)
     else:
@@ -981,20 +1005,16 @@ def run_desktop(api, ui_path):
     webview.start(debug=False, private_mode=False)
 
 # ════════════════════════════════════════════
-# PROFESSIONAL PDF REPORT ENGINE
-# ════════════════════════════════════════════
-# ════════════════════════════════════════════
-# PROFESSIONAL PDF REPORT ENGINE  (compact)
+# PROFESSIONAL PDF REPORT ENGINE  (2-page max)
 # ════════════════════════════════════════════
 def generate_pdf_report(engine: "ExcelEngine", output_path: str,
                         dept_filter: str = "", type_filter: str = "",
                         logo_path: str = "") -> dict:
     """
-    Generate a concise 3-page professional ICT Asset Report.
-    Page 1 : Cover
-    Page 2 : Executive Summary + all key breakdowns on ONE page
-    Page 3 : Closing / sign-off
-    No personal names exposed. No redundant sections.
+    Generate a concise 2-page professional ICT Asset Report.
+    Page 1 : Header + KPI strip + Executive Summary + Equipment table + Department table
+    Page 2 : (only if needed) Attention list + Recent Activity + sign-off
+    No blank pages. No personal names. No redundant sections.
     """
     try:
         from reportlab.lib.pagesizes import A4
@@ -1010,47 +1030,37 @@ def generate_pdf_report(engine: "ExcelEngine", output_path: str,
         from reportlab.lib.colors import HexColor
         import datetime, os, collections, re
 
-        # ── PALETTE — St. Anne Mission Hospital brand ──────
-        C_NAVY   = HexColor('#1a0a0d')   # near-black with warm red tint
-        C_BRAND  = HexColor('#7B1C2E')   # St. Anne maroon (primary)
-        C_BRAND2 = HexColor('#9e2438')   # lighter maroon (hover/accent)
-        C_GOLD   = HexColor('#C49A1A')   # mission gold (accent)
-        C_GOLD_LT= HexColor('#F0C040')   # highlight gold
-        C_BLUE   = HexColor('#7B1C2E')   # alias brand for headings
+        # ── PALETTE ────────────────────────────────────────
+        C_BRAND  = HexColor('#7B1C2E')
+        C_GOLD   = HexColor('#C49A1A')
         C_GREEN  = HexColor('#1a7a3f')
         C_AMBER  = HexColor('#b45309')
         C_GREY   = HexColor('#475569')
-        C_GREY_LT= HexColor('#f9f6f4')   # warm off-white
-        C_GREY_MD= HexColor('#e8e0dc')   # warm grey rule
+        C_GREY_LT= HexColor('#f9f6f4')
+        C_GREY_MD= HexColor('#e8e0dc')
         C_WHITE  = colors.white
-        C_BLACK  = HexColor('#1a0e0b')   # warm near-black
-        C_STRIPE = HexColor('#fdf9f7')   # warm stripe
-        C_RED_H  = HexColor('#7B1C2E')   # repair table header = brand
+        C_BLACK  = HexColor('#1a0e0b')
+        C_STRIPE = HexColor('#fdf9f7')
 
         W, H = A4
-        ML, MR, MT, MB = 2*cm, 2*cm, 2.6*cm, 2.6*cm
-        BW = W - ML - MR   # body width ≈ 171 pts
+        ML, MR, MT, MB = 1.8*cm, 1.8*cm, 2.4*cm, 2.2*cm
+        BW = W - ML - MR
 
-        # ── DATA ─────────────────────────────────────────
+        # ── DATA ───────────────────────────────────────────
         data       = engine.load_all()
         all_rows   = data['inventory']
         hist_items = data['history']
 
         def bucket(c):
             c = (c or '').strip()
-            if c == 'Replaced': return 'replaced'
-            if c == 'Disposed': return 'disposed'
-            if c == 'New':      return 'new'
-            cl = c.lower()
-            if 'repair' in cl:  return 'repair'
-            return 'good'   # Good / Fair / blank / custom → good
+            if c in ('Replaced','Disposed'): return c.lower()
+            if 'repair' in c.lower(): return 'repair'
+            if c == 'New': return 'new'
+            return 'good'
 
-        def filt(rows):
-            return [r for r in rows
-                    if (not dept_filter or r.get('Department/Location','') == dept_filter)
-                    and (not type_filter or r.get('Equipment Type','') == type_filter)]
-
-        filtered      = filt(all_rows)
+        filtered      = [r for r in all_rows
+                         if (not dept_filter or r.get('Department/Location','') == dept_filter)
+                         and (not type_filter or r.get('Equipment Type','') == type_filter)]
         active        = [r for r in filtered if bucket(r.get('Condition/Status')) not in ('replaced','disposed')]
         replaced_rows = [r for r in filtered if bucket(r.get('Condition/Status')) == 'replaced']
         disposed_rows = [r for r in filtered if bucket(r.get('Condition/Status')) == 'disposed']
@@ -1061,22 +1071,16 @@ def generate_pdf_report(engine: "ExcelEngine", output_path: str,
         n_repair = sum(1 for r in active if bucket(r.get('Condition/Status')) == 'repair')
         n_ok     = n_new + n_good
         pct_ok   = round(n_ok / total * 100) if total else 0
-        pct_rep  = round(n_repair / total * 100) if total else 0
 
-        type_counts = collections.Counter(
-            r.get('Equipment Type','Unknown') or 'Unknown' for r in active)
-        dept_counts = collections.Counter(
-            r.get('Department/Location','Unknown') or 'Unknown' for r in active)
+        type_counts = collections.Counter(r.get('Equipment Type','Unknown') or 'Unknown' for r in active)
+        dept_counts = collections.Counter(r.get('Department/Location','Unknown') or 'Unknown' for r in active)
 
-        today  = datetime.date.today()
-        cutoff = today - datetime.timedelta(days=90)
-
+        today_d = datetime.date.today()
+        cutoff  = today_d - datetime.timedelta(days=90)
         def pdate(s):
             try: return datetime.datetime.strptime(str(s)[:10],'%Y-%m-%d').date()
             except: return None
-
-        recent = [h for h in hist_items
-                  if pdate(h.get('date','')) and pdate(h.get('date','')) >= cutoff]
+        recent = [h for h in hist_items if pdate(h.get('date','')) and pdate(h.get('date','')) >= cutoff]
 
         total_cost = 0.0
         for h in recent:
@@ -1087,46 +1091,20 @@ def generate_pdf_report(engine: "ExcelEngine", output_path: str,
 
         now_str  = datetime.datetime.now().strftime('%d %B %Y  %H:%M')
         date_str = datetime.datetime.now().strftime('%d %B %Y')
-        rpt_title = 'ICT Asset Management Report'
-        if dept_filter: rpt_title += f' — {dept_filter}'
-        elif type_filter: rpt_title += f' — {type_filter}'
-
+        scope    = dept_filter or type_filter or 'All Assets'
         top_type = type_counts.most_common(1)[0][0] if type_counts else '—'
         top_dept = dept_counts.most_common(1)[0][0] if dept_counts else '—'
 
-        # ── STYLES ───────────────────────────────────────
+        # ── STYLES ─────────────────────────────────────────
         def S(name, **kw): return ParagraphStyle(name, **kw)
+        s_h2   = S('H2', fontSize=9.5, fontName='Helvetica-Bold', textColor=C_BRAND,
+                   spaceAfter=2, spaceBefore=5, leading=12)
+        s_exec = S('Exec', fontSize=8.5, fontName='Helvetica', textColor=C_BLACK,
+                   leading=13, alignment=TA_JUSTIFY, spaceAfter=3)
+        s_foot = S('Foot', fontSize=7, fontName='Helvetica', textColor=C_GREY,
+                   alignment=TA_CENTER)
 
-        s_cov1  = S('Cov1', fontSize=26, fontName='Helvetica-Bold', textColor=C_BRAND,
-                    alignment=TA_CENTER, leading=32, spaceAfter=2)
-        s_cov2  = S('Cov2', fontSize=14, fontName='Helvetica', textColor=C_GREY,
-                    alignment=TA_CENTER, leading=18, spaceAfter=4)
-        s_cov3  = S('Cov3', fontSize=18, fontName='Helvetica-Bold', textColor=C_GOLD,
-                    alignment=TA_CENTER, leading=24, spaceAfter=4)
-        s_cov4  = S('Cov4', fontSize=10, fontName='Helvetica-Oblique', textColor=C_GREY,
-                    alignment=TA_CENTER, leading=14)
-        s_cdate = S('CDate', fontSize=8.5, fontName='Helvetica', textColor=C_GREY,
-                    alignment=TA_CENTER, leading=12)
-        s_filt  = S('Filt', fontSize=8.5, fontName='Helvetica', textColor=C_GREY,
-                    alignment=TA_CENTER, leading=12)
-        s_h2    = S('H2', fontSize=11, fontName='Helvetica-Bold', textColor=C_BRAND,
-                    spaceAfter=3, spaceBefore=8, leading=15)
-        s_exec  = S('Exec', fontSize=9.5, fontName='Helvetica', textColor=C_BLACK,
-                    leading=15, alignment=TA_JUSTIFY, spaceAfter=5)
-        s_th    = S('TH', fontSize=7.5, fontName='Helvetica-Bold', textColor=C_WHITE,
-                    leading=10, alignment=TA_CENTER)
-        s_td    = S('TD', fontSize=8, fontName='Helvetica', textColor=C_BLACK,
-                    leading=10, alignment=TA_LEFT)
-        s_tdc   = S('TDC', fontSize=8, fontName='Helvetica', textColor=C_BLACK,
-                    leading=10, alignment=TA_CENTER)
-        s_end   = S('End', fontSize=13, fontName='Helvetica-Bold', textColor=C_BRAND,
-                    alignment=TA_CENTER, spaceAfter=4)
-        s_endsub= S('EndSub', fontSize=9, fontName='Helvetica', textColor=C_GREY,
-                    alignment=TA_CENTER, spaceAfter=3)
-        s_endsl = S('EndSl', fontSize=9, fontName='Helvetica-Oblique', textColor=C_GOLD,
-                    alignment=TA_CENTER)
-
-        # ── PAGE HEADER / FOOTER ─────────────────────────
+        # ── PAGE TEMPLATE ──────────────────────────────────
         def make_doc(path):
             class MyDoc(BaseDocTemplate):
                 def __init__(self, fn, **kw):
@@ -1139,12 +1117,11 @@ def generate_pdf_report(engine: "ExcelEngine", output_path: str,
 
                 def _hf(self, cv, doc):
                     cv.saveState()
-                    # header band
+                    # ── Header band ──
                     cv.setFillColor(C_BRAND)
-                    cv.rect(0, H - 1.5*cm, W, 1.5*cm, fill=1, stroke=0)
-                    # accent line
+                    cv.rect(0, H - 1.4*cm, W, 1.4*cm, fill=1, stroke=0)
                     cv.setFillColor(C_GOLD)
-                    cv.rect(0, H - 1.52*cm, W, 0.05*cm, fill=1, stroke=0)
+                    cv.rect(0, H - 1.42*cm, W, 0.04*cm, fill=1, stroke=0)
 
                     lx = ML
                     if logo_path and os.path.exists(logo_path):
@@ -1152,323 +1129,230 @@ def generate_pdf_report(engine: "ExcelEngine", output_path: str,
                             from reportlab.lib.utils import ImageReader
                             img = ImageReader(logo_path)
                             iw, ih = img.getSize()
-                            lh = 1.05*cm
+                            lh = 1.0*cm
                             lw = lh * iw / ih
-                            cv.drawImage(logo_path, lx, H - 1.28*cm,
+                            cv.drawImage(logo_path, lx, H - 1.2*cm,
                                          width=lw, height=lh,
                                          preserveAspectRatio=True, mask='auto')
-                            lx += lw + 7
+                            lx += lw + 6
                         except: pass
 
                     cv.setFillColor(C_WHITE)
-                    cv.setFont('Helvetica-Bold', 8.5)
-                    cv.drawString(lx, H - 0.85*cm, 'St. Anne Mission Hospital')
-                    cv.setFont('Helvetica', 7.5)
-                    cv.setFillColor(HexColor('#94a3b8'))
-                    cv.drawString(lx, H - 1.27*cm, 'ICT Command Centre  ·  Serve With Love')
+                    cv.setFont('Helvetica-Bold', 8)
+                    cv.drawString(lx, H - 0.75*cm, 'St. Anne Mission Hospital — ICT Department')
+                    cv.setFont('Helvetica', 7)
+                    cv.setFillColor(HexColor('#c4b4b8'))
+                    cv.drawString(lx, H - 1.15*cm, f'ICT Asset Report  ·  {scope}  ·  Serve With Love')
                     cv.setFillColor(C_WHITE)
-                    cv.setFont('Helvetica-Bold', 7.5)
-                    cv.drawRightString(W - MR, H - 0.85*cm, rpt_title)
-                    cv.setFont('Helvetica', 7)
-                    cv.setFillColor(HexColor('#94a3b8'))
-                    cv.drawRightString(W - MR, H - 1.27*cm, date_str)
+                    cv.setFont('Helvetica-Bold', 7)
+                    cv.drawRightString(W - MR, H - 0.75*cm, date_str)
+                    cv.setFont('Helvetica', 6.5)
+                    cv.setFillColor(HexColor('#c4b4b8'))
+                    cv.drawRightString(W - MR, H - 1.15*cm, f'Page {doc.page}  ·  CONFIDENTIAL')
 
-                    # footer
-                    cv.setFillColor(C_GREY_MD)
-                    cv.rect(ML, MB - 0.65*cm, BW, 0.45*cm, fill=1, stroke=0)
+                    # ── Footer ──
+                    cv.setStrokeColor(C_GREY_MD)
+                    cv.setLineWidth(0.5)
+                    cv.line(ML, MB - 0.3*cm, W - MR, MB - 0.3*cm)
                     cv.setFillColor(C_GREY)
-                    cv.setFont('Helvetica', 7)
-                    cv.drawString(ML + 4, MB - 0.44*cm,
-                        f'St. Anne Mission Hospital  ·  ICT Asset Report  ·  {now_str}')
-                    cv.drawRightString(W - MR - 4, MB - 0.44*cm,
-                        f'Page {doc.page}  ·  CONFIDENTIAL')
+                    cv.setFont('Helvetica', 6.5)
+                    cv.drawString(ML, MB - 0.55*cm,
+                        f'St. Anne Mission Hospital  ·  ICT Asset Report  ·  Generated {now_str}')
+                    cv.drawRightString(W - MR, MB - 0.55*cm, 'CONFIDENTIAL — ICT USE ONLY')
                     cv.restoreState()
 
             return MyDoc(path, pagesize=A4,
                          leftMargin=ML, rightMargin=MR,
                          topMargin=MT, bottomMargin=MB,
-                         title=rpt_title,
-                         author='St. Anne Mission Hospital ICT',
-                         subject='ICT Asset Management Report')
+                         title='ICT Asset Report',
+                         author='St. Anne Mission Hospital ICT')
 
-        # ── HELPERS ──────────────────────────────────────
-        def sp(h=5):  return Spacer(1, h)
-        def hr(c=C_GREY_MD): return HRFlowable(width='100%', thickness=0.8,
-                                                color=c, spaceAfter=4, spaceBefore=2)
+        # ── HELPERS ────────────────────────────────────────
+        def sp(h=4): return Spacer(1, h)
+        def hr():    return HRFlowable(width='100%', thickness=0.6, color=C_GOLD,
+                                       spaceAfter=3, spaceBefore=1)
 
-        def sh(text, icon=''):
-            """Section heading."""
-            label = f'{icon}  {text}' if icon else text
-            return [
-                sp(6),
-                Paragraph(label, s_h2),
-                HRFlowable(width='100%', thickness=1.2, color=C_GOLD,
-                           spaceAfter=5, spaceBefore=0),
-            ]
+        def sh(text):
+            return [sp(4), Paragraph(text, s_h2), hr()]
 
-        def cover_kpi_block(items):
-            """Horizontal KPI strip — items: [(label, value, hex_color), ...]"""
-            n = len(items)
-            cw = BW / n
-            row_vals = [Paragraph(
-                f'<font size="22"><b><font color="{c}">{v}</font></b></font>',
-                ParagraphStyle('KV', alignment=TA_CENTER, leading=26)) for _, v, c in items]
-            row_lbls = [Paragraph(
-                f'<font color="#475569"><font size="7.5">{l}</font></font>',
-                ParagraphStyle('KL', alignment=TA_CENTER, leading=10)) for l, _, _ in items]
-            t = Table([row_vals, row_lbls], colWidths=[cw]*n, rowHeights=[30, 14])
-            t.setStyle(TableStyle([
-                ('BACKGROUND', (0,0), (-1,-1), C_GREY_LT),
-                ('BOX',        (0,0), (-1,-1), 0.5, C_GREY_MD),
-                ('INNERGRID',  (0,0), (-1,-1), 0.5, C_GREY_MD),
-                ('VALIGN',     (0,0), (-1,-1), 'MIDDLE'),
-                ('TOPPADDING', (0,0), (-1,0), 6),
-                ('BOTTOMPADDING', (0,1), (-1,1), 5),
-            ]))
-            return t
-
-        def dtable(headers, rows_data, col_widths, hbg=C_BRAND, fontsize=7.8):
-            """Clean data table. Alternating row shading, tight padding."""
-            # Rebuild styles at requested font size
-            _th = ParagraphStyle('th2', fontSize=fontsize-0.3, fontName='Helvetica-Bold',
-                                 textColor=C_WHITE, leading=fontsize+1.5, alignment=TA_CENTER)
-            _td = ParagraphStyle('td2', fontSize=fontsize, fontName='Helvetica',
-                                 textColor=C_BLACK, leading=fontsize+1.5, alignment=TA_LEFT)
-            _tdc= ParagraphStyle('tdc2', fontSize=fontsize, fontName='Helvetica',
-                                 textColor=C_BLACK, leading=fontsize+1.5, alignment=TA_CENTER)
+        def dtable(headers, rows_data, col_widths, hbg=C_BRAND, fs=7.5):
+            _th = ParagraphStyle('th', fontSize=fs-0.5, fontName='Helvetica-Bold',
+                                 textColor=C_WHITE, leading=fs+1, alignment=TA_CENTER)
+            _td = ParagraphStyle('td', fontSize=fs, fontName='Helvetica',
+                                 textColor=C_BLACK, leading=fs+1.5, alignment=TA_LEFT)
+            _tc = ParagraphStyle('tc', fontSize=fs, fontName='Helvetica',
+                                 textColor=C_BLACK, leading=fs+1.5, alignment=TA_CENTER)
 
             tdata = [[Paragraph(h, _th) for h in headers]]
-            for ri, row in enumerate(rows_data):
-                tdata.append([Paragraph(str(c or '—'),
-                                        _tdc if i == 0 else _td)
+            for row in rows_data:
+                tdata.append([Paragraph(str(c or '—'), _tc if i == 0 else _td)
                                for i, c in enumerate(row)])
 
             t = Table(tdata, colWidths=col_widths, repeatRows=1)
             style = [
-                ('BACKGROUND',    (0, 0), (-1, 0), hbg),
-                ('TEXTCOLOR',     (0, 0), (-1, 0), C_WHITE),
-                ('TOPPADDING',    (0, 0), (-1,-1), 3),
-                ('BOTTOMPADDING', (0, 0), (-1,-1), 3),
-                ('LEFTPADDING',   (0, 0), (-1,-1), 5),
-                ('RIGHTPADDING',  (0, 0), (-1,-1), 5),
-                ('GRID',          (0, 0), (-1,-1), 0.35, C_GREY_MD),
-                ('VALIGN',        (0, 0), (-1,-1), 'MIDDLE'),
-                ('ROWBACKGROUNDS',(0, 1), (-1,-1), [C_WHITE, C_STRIPE]),
-                # Bold last row if it's a TOTAL row
+                ('BACKGROUND',    (0,0), (-1,0), hbg),
+                ('TOPPADDING',    (0,0), (-1,-1), 2),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 2),
+                ('LEFTPADDING',   (0,0), (-1,-1), 4),
+                ('RIGHTPADDING',  (0,0), (-1,-1), 4),
+                ('GRID',          (0,0), (-1,-1), 0.3, C_GREY_MD),
+                ('VALIGN',        (0,0), (-1,-1), 'MIDDLE'),
+                ('ROWBACKGROUNDS',(0,1), (-1,-1), [C_WHITE, C_STRIPE]),
             ]
-            # Bold the last row when it starts with "TOTAL"
             if rows_data and str(rows_data[-1][0]).upper().startswith('TOTAL'):
                 style += [
                     ('FONTNAME',   (0,-1), (-1,-1), 'Helvetica-Bold'),
                     ('BACKGROUND', (0,-1), (-1,-1), C_GREY_LT),
-                    ('LINEABOVE',  (0,-1), (-1,-1), 0.8, C_GREY),
+                    ('LINEABOVE',  (0,-1), (-1,-1), 0.6, C_GREY),
                 ]
             t.setStyle(TableStyle(style))
             return t
 
+        # ── KPI STRIP ──────────────────────────────────────
+        def kpi_strip():
+            items = [
+                ('Total Active Assets', str(total),            '#7B1C2E'),
+                ('Good / New',          f'{n_ok}  ({pct_ok}%)','#1a7a3f'),
+                ('Need Attention',      str(n_repair),          '#b45309'),
+                ('Replaced / Retired',  str(len(replaced_rows)+len(disposed_rows)), '#C49A1A'),
+                ('Departments',         str(len(dept_counts)),  '#475569'),
+            ]
+            n   = len(items)
+            cw  = BW / n
+            vals = [Paragraph(
+                        f'<font size="18"><b><font color="{c}">{v}</font></b></font>',
+                        ParagraphStyle('kv', alignment=TA_CENTER, leading=22))
+                    for _, v, c in items]
+            lbls = [Paragraph(
+                        f'<font color="#475569"><font size="6.5">{l}</font></font>',
+                        ParagraphStyle('kl', alignment=TA_CENTER, leading=9))
+                    for l, _, _ in items]
+            t = Table([vals, lbls], colWidths=[cw]*n, rowHeights=[26, 13])
+            t.setStyle(TableStyle([
+                ('BACKGROUND',    (0,0), (-1,-1), C_GREY_LT),
+                ('BOX',           (0,0), (-1,-1), 0.4, C_GREY_MD),
+                ('INNERGRID',     (0,0), (-1,-1), 0.4, C_GREY_MD),
+                ('VALIGN',        (0,0), (-1,-1), 'MIDDLE'),
+                ('TOPPADDING',    (0,0), (-1,0),  4),
+                ('BOTTOMPADDING', (0,1), (-1,1),  4),
+            ]))
+            return t
+
         # ════════════════════════════════════════════════
-        # PAGE 1: COVER  (self-contained, no overflow)
+        # BUILD STORY
         # ════════════════════════════════════════════════
         story = []
-        story.append(sp(55))
-        story.append(Paragraph(
-            '<font color="#C49A1A">St. Anne</font> Mission Hospital', s_cov1))
-        story.append(Paragraph('ICT Department', s_cov2))
-        story.append(sp(4))
-        story.append(HRFlowable(width=7*cm, thickness=2, color=C_GOLD,
-                                hAlign='CENTER', spaceBefore=2, spaceAfter=6))
-        story.append(sp(4))
-        story.append(Paragraph('ICT Asset Management Report', s_cov3))
-        story.append(sp(3))
-        story.append(Paragraph('<i>Serve With Love</i>', s_cov4))
-        story.append(sp(28))
-        story.append(cover_kpi_block([
-            ('Total Active Assets', str(total),    '#7B1C2E'),
-            ('Good Condition',      f'{pct_ok}%',  '#1a7a3f'),
-            ('Need Attention',      f'{pct_rep}%', '#b45309'),
-            ('Departments',         str(len(dept_counts)), '#C49A1A'),
-        ]))
-        story.append(sp(18))
-        if dept_filter or type_filter:
-            parts = []
-            if dept_filter: parts.append(f'Department: <b>{dept_filter}</b>')
-            if type_filter: parts.append(f'Type: <b>{type_filter}</b>')
-            story.append(Paragraph('Scope: ' + '  |  '.join(parts), s_filt))
-            story.append(sp(4))
-        story.append(Paragraph(f'Generated  {now_str}', s_cdate))
-        story.append(PageBreak())
 
-        # ════════════════════════════════════════════════
-        # PAGE 2: ALL CONTENT  (designed to fit ~1 page)
-        # ════════════════════════════════════════════════
-
-        # ── Executive Summary ────────────────────────────
-        story += sh('Executive Summary', '📋')
-
-        repair_clause = (
-            f'Of concern, <b>{n_repair}</b> asset{"s" if n_repair!=1 else ""} '
-            f'({pct_rep}%) currently require maintenance or repair.'
-        ) if n_repair else \
-            'No assets are currently flagged as requiring repair.'
-
-        lifecycle_clause = ''
-        if len(replaced_rows) > 0:
-            lifecycle_clause = (
-                f' A further <b>{len(replaced_rows)}</b> unit'
-                f'{"s" if len(replaced_rows)!=1 else ""} have been retired and '
-                f'replaced under lifecycle management.'
-            )
-
-        cost_clause = (
-            f' Maintenance costs recorded in the past 90 days total '
-            f'<b>KES {total_cost:,.0f}</b>.'
-        ) if total_cost > 0 else ''
-
-        story.append(Paragraph(
-            f'The ICT Department of <b>St. Anne Mission Hospital</b> manages '
-            f'<b>{total}</b> active ICT asset{"s" if total!=1 else ""} across '
-            f'<b>{len(dept_counts)}</b> department{"s" if len(dept_counts)!=1 else ""}. '
-            f'Of these, <b>{n_ok}</b> ({pct_ok}%) are in good or new working condition. '
-            f'{repair_clause}'
-            f'{lifecycle_clause}'
-            f'{cost_clause} '
-            f'The leading asset category is <b>{top_type}</b>; the department with the '
-            f'highest asset count is <b>{top_dept}</b>.',
-            s_exec))
+        # ── KPI strip ──────────────────────────────────
+        story.append(kpi_strip())
         story.append(sp(6))
 
-        # ── Equipment by Type ────────────────────────────
-        story += sh('Assets by Equipment Type', '🖥️')
+        # ── Executive Summary ───────────────────────────
+        story += sh('Executive Summary')
+        repair_note = (f'{n_repair} asset{"s" if n_repair!=1 else ""} currently require maintenance.' if n_repair
+                       else 'No assets are currently flagged for repair.')
+        cost_note   = (f' Maintenance costs (last 90 days): <b>KES {total_cost:,.0f}</b>.' if total_cost else '')
+        lifecycle_note = (f' {len(replaced_rows)} unit{"s" if len(replaced_rows)!=1 else ""} retired under lifecycle management.' if replaced_rows else '')
+        story.append(Paragraph(
+            f'The ICT Department manages <b>{total}</b> active asset{"s" if total!=1 else ""} across '
+            f'<b>{len(dept_counts)}</b> department{"s" if len(dept_counts)!=1 else ""}. '
+            f'<b>{n_ok}</b> ({pct_ok}%) are in good or new condition. {repair_note}'
+            f'{cost_note}{lifecycle_note} '
+            f'Leading category: <b>{top_type}</b>. Highest asset count: <b>{top_dept}</b>.',
+            s_exec))
+
+        # ── Equipment by Type + Department (side by side) ─
+        story += sh('Asset Breakdown')
 
         type_rows = []
         for etype, cnt in type_counts.most_common():
-            tr = [r for r in active if r.get('Equipment Type','') == etype]
-            ok  = sum(1 for r in tr if bucket(r.get('Condition/Status')) in ('new','good'))
+            tr  = [r for r in active if r.get('Equipment Type','') == etype]
             rep = sum(1 for r in tr if bucket(r.get('Condition/Status')) == 'repair')
-            pct = f'{round(cnt/total*100)}%' if total else '0%'
-            # visual bar: 12 chars, proportional
-            ok_b  = round(ok  / cnt * 12) if cnt else 0
-            rep_b = round(rep / cnt * 12) if cnt else 0
-            oth_b = 12 - ok_b - rep_b
-            bar   = ('█' * ok_b) + ('░' * oth_b) + ('▓' * rep_b)
-            type_rows.append([etype, cnt, pct, ok, rep, bar])
-
-        # Totals row
-        type_rows.append([
-            'TOTAL',
-            total,
-            '100%',
-            n_ok,
-            n_repair,
-            '',
-        ])
-
-        cw_type = [BW*0.30, BW*0.08, BW*0.08, BW*0.09, BW*0.09, BW*0.36]
-        story.append(dtable(
-            ['Equipment Type', 'Count', '% Fleet', 'Good/New', 'Repair', 'Condition  (█Good  ▓Repair)'],
-            type_rows, cw_type))
-        story.append(sp(6))
-
-        # ── Department Distribution ───────────────────────
-        story += sh('Assets by Department', '🏢')
+            ok  = cnt - rep
+            type_rows.append([etype, str(cnt), str(ok), str(rep),
+                               f'{round(cnt/total*100)}%' if total else '0%'])
+        type_rows.append(['TOTAL', str(total), str(n_ok), str(n_repair), '100%'])
 
         dept_rows = []
         for dept, cnt in dept_counts.most_common():
             dr  = [r for r in active if r.get('Department/Location','') == dept]
             rep = sum(1 for r in dr if bucket(r.get('Condition/Status')) == 'repair')
-            ok  = cnt - rep
-            pct = f'{round(cnt/total*100)}%' if total else '0%'
-            dept_rows.append([dept, cnt, pct, ok, rep])
+            dept_rows.append([dept, str(cnt), str(rep),
+                               f'{round(cnt/total*100)}%' if total else '0%'])
+        dept_rows.append(['TOTAL', str(total), str(n_repair), '100%'])
 
-        dept_rows.append(['TOTAL', total, '100%', n_ok, n_repair])
+        # Side by side: type table left, dept table right, with a small gap
+        GAP = 0.3*cm
+        TW  = (BW - GAP) * 0.48
+        DW  = BW - TW - GAP
 
-        cw_dept = [BW*0.40, BW*0.10, BW*0.10, BW*0.20, BW*0.20]
-        story.append(dtable(
-            ['Department / Location', 'Assets', '%', 'Good/New', 'Repair'],
-            dept_rows, cw_dept))
-        story.append(sp(6))
+        type_cw = [TW*0.42, TW*0.14, TW*0.15, TW*0.15, TW*0.14]
+        dept_cw = [DW*0.52, DW*0.16, DW*0.16, DW*0.16]
 
-        # ── Assets Needing Repair ────────────────────────
+        t_type = dtable(['Equipment Type','Total','Good','Repair','%'], type_rows, type_cw)
+        t_dept = dtable(['Department','Total','Repair','%'], dept_rows, dept_cw)
+
+        side_by_side = Table([[t_type, Spacer(GAP,1), t_dept]],
+                              colWidths=[TW, GAP, DW])
+        side_by_side.setStyle(TableStyle([
+            ('VALIGN', (0,0), (-1,-1), 'TOP'),
+            ('LEFTPADDING',  (0,0), (-1,-1), 0),
+            ('RIGHTPADDING', (0,0), (-1,-1), 0),
+            ('TOPPADDING',   (0,0), (-1,-1), 0),
+            ('BOTTOMPADDING',(0,0), (-1,-1), 0),
+        ]))
+        story.append(side_by_side)
+
+        # ── Assets Needing Attention ────────────────────
         repair_assets = [r for r in active if bucket(r.get('Condition/Status')) == 'repair']
         if repair_assets:
-            story += sh('Assets Requiring Attention', '⚠️')
-            r_rows = []
-            for r in repair_assets:
-                r_rows.append([
-                    r.get('Equipment Type',''),
-                    r.get('Brand/Model',''),
-                    r.get('Serial No.',''),
-                    r.get('Department/Location',''),
-                    r.get('Condition/Status',''),
-                ])
-            cw_rep = [BW*0.20, BW*0.22, BW*0.18, BW*0.24, BW*0.16]
+            story += sh('Assets Requiring Attention')
+            r_rows = [[
+                r.get('Equipment Type',''),
+                r.get('Brand/Model',''),
+                r.get('Serial No.',''),
+                r.get('Department/Location',''),
+                r.get('Condition/Status',''),
+            ] for r in repair_assets]
+            cw_rep = [BW*0.18, BW*0.22, BW*0.18, BW*0.26, BW*0.16]
             story.append(dtable(
-                ['Type', 'Brand / Model', 'Serial No.', 'Department', 'Status'],
-                r_rows, cw_rep, hbg=C_RED_H))
-            story.append(sp(6))
+                ['Type','Brand / Model','Serial No.','Department','Status'],
+                r_rows, cw_rep, hbg=HexColor('#7B1C2E')))
 
-        # ── Recent Activity (summary only) ───────────────
+        # ── Recent Activity ─────────────────────────────
         if recent:
-            story += sh('Recent Activity — Last 90 Days', '🕐')
-
-            # Count events by type — no names, no detail rows
+            story += sh('Recent Activity — Last 90 Days')
             ev_counts = collections.Counter(h.get('event','other') for h in recent)
-            ev_rows = [[ev.title(), str(cnt)] for ev, cnt in ev_counts.most_common()]
+            ev_rows   = [[ev.title(), str(cnt)] for ev, cnt in ev_counts.most_common()]
             ev_rows.append(['TOTAL', str(len(recent))])
-
-            # Side-by-side: event summary left, cost summary right
-            ev_tbl = dtable(['Event Type', 'Count'], ev_rows,
-                            [BW*0.30, BW*0.12], fontsize=7.8)
-
-            # Recent high-activity months
-            month_counts = collections.Counter()
-            for h in recent:
-                d = pdate(h.get('date',''))
-                if d: month_counts[d.strftime('%b %Y')] += 1
-
-            month_rows = [[m, str(c)] for m, c in month_counts.most_common(4)]
-
-            # Cost note
             activity_note = (
-                f'{len(recent)} maintenance and operational event'
-                f'{"s" if len(recent)!=1 else ""} recorded in the past 90 days'
-                f'{f", with total logged costs of KES {total_cost:,.0f}" if total_cost else ""}.'
+                f'{len(recent)} event{"s" if len(recent)!=1 else ""} recorded in the past 90 days'
+                f'{f" · KES {total_cost:,.0f} in logged costs" if total_cost else ""}.'
             )
             story.append(Paragraph(activity_note, s_exec))
-            story.append(dtable(['Event Type', 'Count'], ev_rows,
-                                 [BW*0.55, BW*0.20], fontsize=7.8))
-            story.append(sp(6))
+            story.append(dtable(['Event Type','Count'], ev_rows,
+                                 [BW*0.55, BW*0.20]))
 
-        # ── Lifecycle (compact, if any) ───────────────────
+        # ── Lifecycle (only if data exists) ─────────────
         if replaced_rows or disposed_rows:
-            story += sh('Lifecycle Summary', '🔁')
-            rep_types = collections.Counter(
-                r.get('Equipment Type','Unknown') or 'Unknown' for r in replaced_rows)
-            dis_types = collections.Counter(
-                r.get('Equipment Type','Unknown') or 'Unknown' for r in disposed_rows)
-            all_et = sorted(set(list(rep_types) + list(dis_types)))
-            lc_rows = [[et, str(rep_types.get(et,0)), str(dis_types.get(et,0))]
-                       for et in all_et]
+            story += sh('Lifecycle Summary')
+            rep_types = collections.Counter(r.get('Equipment Type','Unknown') or 'Unknown' for r in replaced_rows)
+            dis_types = collections.Counter(r.get('Equipment Type','Unknown') or 'Unknown' for r in disposed_rows)
+            all_et  = sorted(set(list(rep_types)+list(dis_types)))
+            lc_rows = [[et, str(rep_types.get(et,0)), str(dis_types.get(et,0))] for et in all_et]
             lc_rows.append(['TOTAL', str(len(replaced_rows)), str(len(disposed_rows))])
-            cw_lc = [BW*0.55, BW*0.225, BW*0.225]
-            story.append(dtable(['Equipment Type', 'Replaced', 'Disposed'],
-                                lc_rows, cw_lc))
+            story.append(dtable(['Equipment Type','Replaced','Disposed'],
+                                 lc_rows, [BW*0.60, BW*0.20, BW*0.20]))
 
-        # ════════════════════════════════════════════════
-        # CLOSING PAGE
-        # ════════════════════════════════════════════════
-        story.append(PageBreak())
-        story.append(sp(90))
-        story.append(Paragraph('End of Report', s_end))
-        story.append(HRFlowable(width=5*cm, thickness=1.5, color=C_GOLD,
-                                hAlign='CENTER', spaceAfter=10))
+        # ── Sign-off ─────────────────────────────────────
+        story.append(sp(8))
+        story.append(HRFlowable(width='100%', thickness=0.5, color=C_GREY_MD,
+                                spaceAfter=4, spaceBefore=4))
         story.append(Paragraph(
-            'St. Anne Mission Hospital  ·  ICT Department', s_endsub))
-        story.append(Paragraph('<i>Serve With Love</i>', s_endsl))
-        story.append(sp(10))
-        story.append(Paragraph(
-            f'<font color="#94a3b8">Generated {now_str}  ·  CONFIDENTIAL</font>',
-            ParagraphStyle('EndDate', fontSize=7.5, fontName='Helvetica',
+            f'<font color="#7B1C2E"><b>St. Anne Mission Hospital  ·  ICT Department</b></font>'
+            f'  &nbsp;·&nbsp;  <i>Serve With Love</i>'
+            f'  &nbsp;·&nbsp;  <font color="#94a3b8">Generated {now_str}  ·  CONFIDENTIAL</font>',
+            ParagraphStyle('sf', fontSize=7, fontName='Helvetica',
                            alignment=TA_CENTER, textColor=C_GREY)))
 
         # ── BUILD ─────────────────────────────────────────
@@ -1480,6 +1364,7 @@ def generate_pdf_report(engine: "ExcelEngine", output_path: str,
     except Exception as e:
         import traceback
         return {"ok": False, "error": str(e), "trace": traceback.format_exc()}
+
 
 def main():
     engine = ExcelEngine()
