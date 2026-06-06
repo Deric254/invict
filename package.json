@@ -1,0 +1,61 @@
+{
+  "name": "ict-command-centre",
+  "version": "2.0.0",
+  "description": "St. Anne Mission Hospital \u2014 ICT Command Centre",
+  "author": "St. Anne Mission Hospital ICT",
+  "main": "electron-main.js",
+  "scripts": {
+    "start": "electron .",
+    "build:win": "electron-builder --win nsis"
+  },
+  "devDependencies": {
+    "electron": "^31.0.0",
+    "electron-builder": "^24.0.0"
+  },
+  "build": {
+    "appId": "ke.co.stannemission.ictcommandcentre",
+    "productName": "ICT Command Centre",
+    "copyright": "St. Anne Mission Hospital",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "electron-main.js",
+      "preload.js"
+    ],
+    "extraResources": [
+      {
+        "from": "src",
+        "to": "src"
+      },
+      {
+        "from": "assets",
+        "to": "assets"
+      },
+      {
+        "from": "python",
+        "to": "python"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "ICT Command Centre",
+      "installerIcon": "assets/icon.ico",
+      "uninstallerIcon": "assets/icon.ico",
+      "artifactName": "ICT_CommandCentre_Setup.exe"
+    }
+  }
+}

@@ -1,56 +1,88 @@
 @echo off
-title St. Anne ICT Command Centre — EXE Builder
+title St. Anne ICT Command Centre — Installer Builder
 color 0A
+cd /d "%~dp0"
 
 echo ============================================================
-echo   ST. ANNE MISSION HOSPITAL — ICT Command Centre
-echo   Building Portable EXE ...
+echo   St. Anne Mission Hospital — ICT Command Centre
+echo   Building Installer EXE
 echo ============================================================
 echo.
 
-:: Check Python
-python --version >nul 2>&1
+:: ── Node.js check ────────────────────────────────────────────────────────────
+node --version >nul 2>&1
 if errorlevel 1 (
-    echo [ERROR] Python not found. Install from https://python.org and tick "Add to PATH"
-    pause
-    exit /b 1
+    echo [ERROR] Node.js not found. Install from https://nodejs.org
+    pause & exit /b 1
 )
-echo [OK] Python found.
+for /f "tokens=* delims=v" %%V in ('node --version') do set NODE_VER=%%V
+echo [OK] Node.js v%NODE_VER%
 
-:: Install/upgrade PyInstaller and dependencies
-echo.
-echo Installing build dependencies (one-time only)...
-pip install --quiet --upgrade pyinstaller openpyxl reportlab
-if errorlevel 1 (
-    echo [ERROR] pip failed. Check your internet connection.
-    pause
-    exit /b 1
+:: ── Bundled Python ────────────────────────────────────────────────────────────
+if not exist "python\python.exe" (
+    echo.
+    echo [INFO] Downloading embedded Python - needs internet, ~2 min...
+    call scripts\bundle-python.bat
+    if errorlevel 1 ( pause & exit /b 1 )
+) else (
+    echo [OK] Embedded Python ready.
 )
-echo [OK] Dependencies ready.
 
-:: Run PyInstaller
+:: ── Snapshot your live data into assets\ ─────────────────────────────────────
 echo.
-echo Building ICT_CommandCentre.exe — this takes 1-3 minutes...
+echo [INFO] Snapshotting your current data into the installer...
+
+:: auth.json — carries your PIN into the installer
+if exist "data-dev\auth.json" (
+    copy /Y "data-dev\auth.json" "assets\auth.json" >nul
+    echo [OK] PIN snapshot taken from data-dev\auth.json
+) else if exist "auth.json" (
+    copy /Y "auth.json" "assets\auth.json" >nul
+    echo [OK] PIN snapshot taken from auth.json
+) else (
+    echo [INFO] No auth.json found - installer will prompt PIN on first run
+)
+
+:: ICT_MASTER.xlsx — carry live inventory into the installer
+if exist "data-dev\ICT_MASTER.xlsx" (
+    copy /Y "data-dev\ICT_MASTER.xlsx" "assets\ICT_MASTER.xlsx" >nul
+    echo [OK] Inventory snapshot taken from data-dev\ICT_MASTER.xlsx
+) else if exist "ICT_MASTER.xlsx" (
+    copy /Y "ICT_MASTER.xlsx" "assets\ICT_MASTER.xlsx" >nul
+    echo [OK] Inventory snapshot taken from ICT_MASTER.xlsx
+) else (
+    echo [INFO] No ICT_MASTER.xlsx found - installer will create fresh database
+)
+
+:: ── Node dependencies ─────────────────────────────────────────────────────────
+if not exist "node_modules\electron" (
+    echo.
+    echo [INFO] Installing build tools - one time only...
+    npm install
+    if errorlevel 1 ( echo [ERROR] npm install failed. & pause & exit /b 1 )
+)
+echo [OK] Build tools ready.
+
+:: ── Build installer ───────────────────────────────────────────────────────────
 echo.
-pyinstaller ICTCommandCentre.spec --clean --noconfirm
+echo Building installer... (3-6 minutes, downloading Electron if first time)
+echo.
+npm run build:win
 if errorlevel 1 (
     echo.
-    echo [ERROR] Build failed. See messages above.
-    pause
-    exit /b 1
+    echo [ERROR] Build failed - see messages above.
+    pause & exit /b 1
 )
 
 echo.
 echo ============================================================
-echo   BUILD COMPLETE!
+echo   DONE!
 echo.
-echo   Your portable exe is at:
-echo   dist\ICT_CommandCentre.exe
+echo   dist\ICT_CommandCentre_Setup.exe
 echo.
-echo   Copy ONLY that one file to any Windows PC and run it.
-echo   No Python needed on the target machine.
-echo   Data files (ICT_MASTER.xlsx etc.) are created next to
-echo   the exe on first launch and persist across runs.
+echo   This is a proper installer - send it to any Windows PC.
+echo   It will install to Program Files with a Start Menu shortcut.
+echo   Your PIN and data are bundled inside.
 echo ============================================================
 echo.
 pause

@@ -3,62 +3,50 @@ title St. Anne ICT Command Centre
 cd /d "%~dp0"
 echo ================================================
 echo  St. Anne Mission Hospital -- ICT Command Centre
-echo  Simple reliable browser mode
 echo ================================================
 echo.
 
-set PYTHON_CMD=
-py -3.12 --version >nul 2>&1 && set PYTHON_CMD=py -3.12
-if "%PYTHON_CMD%"=="" py -3.11 --version >nul 2>&1 && set PYTHON_CMD=py -3.11
-if "%PYTHON_CMD%"=="" py -3.10 --version >nul 2>&1 && set PYTHON_CMD=py -3.10
-if "%PYTHON_CMD%"=="" python --version >nul 2>&1 && set PYTHON_CMD=python
-if "%PYTHON_CMD%"=="" python3 --version >nul 2>&1 && set PYTHON_CMD=python3
-if "%PYTHON_CMD%"=="" py --version >nul 2>&1 && set PYTHON_CMD=py
-
-if "%PYTHON_CMD%"=="" (
-    echo ERROR: Python not found.
-    echo Please install Python 3.11 or 3.12 from https://www.python.org/downloads/
-    echo During install, check "Add Python to PATH"
-    pause
-    exit /b 1
-)
-
-echo Python: %PYTHON_CMD%
-echo Checking required package: openpyxl...
-%PYTHON_CMD% -c "import openpyxl" >nul 2>&1
-if errorlevel 1 (
-    echo openpyxl not found. Installing it once...
-    %PYTHON_CMD% -m pip install openpyxl --quiet --disable-pip-version-check
+:: ── Bundled Python ───────────────────────────────────────────────────────────
+if not exist "python\python.exe" (
+    echo [INFO] First run - setting up Python. Needs internet, takes ~2 min...
+    call scripts\bundle-python.bat
     if errorlevel 1 (
-        echo ERROR: Could not install openpyxl.
-        echo Check internet connection or install it manually:
-        echo %PYTHON_CMD% -m pip install openpyxl
-        pause
-        exit /b 1
+        echo.
+        echo [ERROR] Python setup failed.
+        pause & exit /b 1
     )
-)
-
-echo Checking required package: reportlab...
-%PYTHON_CMD% -c "import reportlab" >nul 2>&1
-if errorlevel 1 (
-    echo reportlab not found. Installing it once...
-    %PYTHON_CMD% -m pip install reportlab --quiet --disable-pip-version-check
-    if errorlevel 1 (
-        echo ERROR: Could not install reportlab.
-        echo Check internet connection or install it manually:
-        echo %PYTHON_CMD% -m pip install reportlab
-        pause
-        exit /b 1
-    )
-)
-
-echo.
-echo Starting ICT Command Centre...
-echo.
-%PYTHON_CMD% main.py
-
-if errorlevel 1 (
     echo.
-    echo === Application error. Make sure ICT_MASTER.xlsx is closed in Excel. ===
-    pause
 )
+
+:: ── Node.js ───────────────────────────────────────────────────────────────────
+node --version >nul 2>&1
+if errorlevel 1 (
+    echo [ERROR] Node.js not found. Install from https://nodejs.org
+    pause & exit /b 1
+)
+
+:: ── Node modules ──────────────────────────────────────────────────────────────
+if not exist "node_modules\electron" (
+    echo [INFO] Installing Electron - one time only...
+    npm install
+    if errorlevel 1 ( echo [ERROR] npm install failed. & pause & exit /b 1 )
+    echo [OK] Done.
+    echo.
+)
+
+:: ── Launch ────────────────────────────────────────────────────────────────────
+set ICT_PYTHON=%~dp0python\python.exe
+echo [OK] Python: %ICT_PYTHON%
+echo [OK] Launching...
+echo.
+
+npm start
+set EXIT_CODE=%errorlevel%
+
+echo.
+if %EXIT_CODE% neq 0 (
+    echo [ERROR] App crashed with code %EXIT_CODE%
+) else (
+    echo [OK] App closed.
+)
+pause

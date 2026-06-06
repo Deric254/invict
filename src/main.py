@@ -14,20 +14,22 @@ import http.server, socketserver, webbrowser, urllib.parse
 from openpyxl.styles import Font, PatternFill, Alignment
 from openpyxl.utils import get_column_letter
 
-# ── Portable EXE path resolution ─────────────────────────────────────────────
-# When frozen by PyInstaller, sys._MEIPASS is the temp folder where bundled
-# read-only assets (ui.html, seed Excel) live.
-# Mutable data (ICT_MASTER.xlsx, auth.json, config.json, backups, reports)
-# live next to the .exe so they persist across runs.
+# ── Portable EXE / Electron path resolution ───────────────────────────────────
+# Three launch modes:
+#   1. Electron:      env vars ICT_BUNDLE_DIR + ICT_DATA_DIR are set by main.js
+#   2. PyInstaller:   sys._MEIPASS == bundle dir, sys.executable dir == data dir
+#   3. Script (dev):  both dirs == directory of main.py
+
 def _meipass():
-    """Return the PyInstaller bundle directory (read-only assets)."""
+    """Return the directory for read-only bundled assets (ui.html, seed Excel)."""
+    if os.environ.get('ICT_BUNDLE_DIR'):
+        return os.environ['ICT_BUNDLE_DIR']
     return getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
 
 def _datadir():
-    """Return the directory for mutable data files.
-    When frozen: same folder as the .exe.
-    When running as a script: same folder as main.py.
-    """
+    """Return the directory for mutable data files (live Excel, auth, reports)."""
+    if os.environ.get('ICT_DATA_DIR'):
+        return os.environ['ICT_DATA_DIR']
     if getattr(sys, 'frozen', False):
         return os.path.dirname(sys.executable)
     return os.path.dirname(os.path.abspath(__file__))
@@ -35,7 +37,9 @@ def _datadir():
 BUNDLE_DIR = _meipass()   # read-only: ui.html, seed ICT_MASTER.xlsx
 BASE_DIR   = _datadir()   # read-write: live data files
 
-# On first run from a fresh exe, seed the data files from the bundle
+os.makedirs(BASE_DIR, exist_ok=True)
+
+# On first run from a fresh install, seed the data files from the bundle
 def _seed_file(name):
     dst = os.path.join(BASE_DIR, name)
     if not os.path.exists(dst):
@@ -933,14 +937,18 @@ class LocalServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
     daemon_threads = True
     allow_reuse_address = True
 
-def run_browser(api, ui_path):
-    # browser_mode=True -> injects the fetch-proxy bridge into the page
-    server = LocalServer(("127.0.0.1", 0), make_handler(api, ui_path, browser_mode=True))
-    url = f"http://127.0.0.1:{server.server_port}/"
-    print("St. Anne ICT Command Centre is running locally.")
-    print("Open this address if the browser does not appear:")
-    print(url)
-    webbrowser.open(url)
+def run_browser(api, ui_path, electron_mode=False):
+    # electron_mode: bridge injected by preload.js; serve raw html, no webbrowser.open
+    server = LocalServer(("127.0.0.1", 0), make_handler(api, ui_path, browser_mode=not electron_mode))
+    port   = server.server_port
+    url    = f"http://127.0.0.1:{port}/"
+    if electron_mode:
+        print(f"ELECTRON_PORT={port}", flush=True)
+    else:
+        print("St. Anne ICT Command Centre is running locally.")
+        print("Open this address if the browser does not appear:")
+        print(url)
+        webbrowser.open(url)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
@@ -1485,6 +1493,8 @@ def main():
 
     if "--desktop" in sys.argv:
         run_desktop(api, ui_path)
+    elif "--electron" in sys.argv:
+        run_browser(api, ui_path, electron_mode=True)
     else:
         run_browser(api, ui_path)
 

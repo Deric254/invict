@@ -2199,6 +2199,17 @@ function generatePdfReport(){
         var url='/reports/'+encodeURIComponent(res.filename);
         status.innerHTML='✅ PDF ready — <a href="'+url+'" target="_blank" style="color:var(--teal);text-decoration:underline">Click here to open / download</a>';
         window.open(url,'_blank');
+      } else if(res.filename && window.__IS_ELECTRON_MODE__){
+        // Electron: open via shell.openPath through the IPC bridge
+        var url='http://127.0.0.1'+window.location.port?(':'+window.location.port):''+'/reports/'+encodeURIComponent(res.filename);
+        window.electronAPI.openFile(res.path).then(function(){
+          status.textContent='✅ PDF report created and opened: '+res.filename;
+        }).catch(function(){
+          // Fallback: open via the local HTTP server
+          var reportUrl=window.location.origin+'/reports/'+encodeURIComponent(res.filename);
+          window.open(reportUrl,'_blank');
+          status.innerHTML='✅ PDF ready — <a href="'+reportUrl+'" target="_blank" style="color:var(--teal);text-decoration:underline">Click here to open / download</a>';
+        });
       } else {
         status.textContent='✅ PDF report created and opened: '+res.path;
       }
