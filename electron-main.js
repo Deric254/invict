@@ -140,6 +140,7 @@ function createWindow() {
     width: 1440, height: 880, minWidth: 1024, minHeight: 680,
     backgroundColor: '#0d1117',
     title: 'St. Anne Mission Hospital — ICT Command Centre',
+    icon: resPath('assets', 'icon.ico'),
     show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),

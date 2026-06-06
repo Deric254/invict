@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Bundled Python runtime (large, rebuilt by BUILD.bat)
+python/
+
+# Dev data (local only, not for source control)
+data-dev/
+
+# Electron builder cache
+.cache/
+build/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Environment / secrets
+.env
+.env.*
