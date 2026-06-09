@@ -598,6 +598,87 @@ td{padding:.55rem .95rem;overflow:hidden;text-overflow:ellipsis;white-space:nowr
 .xfer-pick-item{display:flex;align-items:center;gap:.75rem;padding:.55rem .75rem;border-bottom:1px solid var(--border);cursor:pointer;transition:background .1s;border-radius:7px}
 .xfer-pick-item:hover{background:var(--bg3)}
 
+/* ── THEME TRANSITION ── */
+body,
+.sidebar,.main,.topbar,.kpi,.card,.modal,.overlay,
+.fsel,.srch input,.ff input,.ff select,.ff textarea,
+.btn,.nav-btn,.ink-card,.cfg-tag,.toast,.log-item,
+.tbl-wrap,thead th,tbody tr,td,.badge{
+  transition:background .22s,color .22s,border-color .22s,box-shadow .22s;
+}
+
+/* ── LIGHT MODE ── */
+html.light{
+  --bg:#f5f3f0;
+  --bg2:#ffffff;
+  --bg3:#f0ede9;
+  --bg4:#e8e3dd;
+  --bg5:#ddd8d0;
+  --text:#1a110d;
+  --text2:#5a4a40;
+  --text3:#9a8880;
+  --border:rgba(0,0,0,.09);
+  --border2:rgba(0,0,0,.15);
+  --brand:#7B1C2E;
+  --brand-dim:rgba(123,28,46,.10);
+  --brand-lt:#9e2438;
+  --brand-glow:rgba(123,28,46,.30);
+  --gold:#C49A1A;
+  --gold-lt:#a07a10;
+  --gold-dim:rgba(196,154,26,.12);
+  --blue:#C49A1A;
+  --blue-dim:rgba(196,154,26,.12);
+  --green:#1a7a3f;
+  --green-dim:rgba(26,122,63,.10);
+  --amber:#b45309;
+  --amber-dim:rgba(180,83,9,.10);
+  --red:#c0152a;
+  --red-dim:rgba(192,21,42,.08);
+  --purple:#6d28d9;
+  --purple-dim:rgba(109,40,217,.08);
+  --teal:#0f766e;
+  --teal-dim:rgba(15,118,110,.08);
+  --cyan:#0e7490;
+  --accent-line:rgba(196,154,26,.5);
+}
+html.light body{background:var(--bg)}
+html.light ::-webkit-scrollbar-thumb{background:rgba(123,28,46,.2)}
+html.light .sidebar{background:var(--bg2);border-color:rgba(123,28,46,.15)}
+html.light .nav-btn.on{background:rgba(123,28,46,.08);color:var(--brand)}
+html.light .brand-sub{color:var(--text3)}
+html.light thead th{background:var(--bg3);color:var(--text3)}
+html.light tbody tr:hover{background:var(--bg3)}
+html.light td{color:var(--text)}
+html.light .kpi{background:var(--bg2);border-color:var(--border)}
+html.light .card{background:var(--bg2);border-color:var(--border)}
+html.light .modal{background:var(--bg2)}
+html.light .mhd,.html.light .mbd{background:var(--bg2)}
+html.light .fsel{background:var(--bg2);color:var(--text)}
+html.light .srch input{background:var(--bg2);color:var(--text)}
+html.light .ff input,.html.light .ff select,.html.light .ff textarea{background:var(--bg3);color:var(--text)}
+html.light .btn{background:var(--bg3);color:var(--text)}
+html.light .btn:hover{background:var(--bg4)}
+html.light .ink-card{background:var(--bg2)}
+html.light .ic-btn{background:var(--bg3);color:var(--text)}
+html.light .ic-qty{background:var(--bg3);color:var(--text)}
+html.light .cfg-tag{background:var(--bg3)}
+html.light .toast{background:var(--bg2)}
+html.light .topbar{background:var(--bg2)}
+html.light .loading-overlay{background:rgba(245,243,240,.95)}
+html.light .bar-track{background:var(--bg4)}
+html.light .rpt-section{background:var(--bg2)}
+html.light .rpt-sec-hd{background:var(--bg3);color:var(--text2)}
+html.light .b-new{background:rgba(196,154,26,.12);color:#7a5c00}
+html.light .b-good{background:rgba(26,122,63,.10);color:#1a7a3f}
+html.light .b-fair{background:rgba(15,118,110,.10);color:#0f766e}
+html.light .b-warn{background:rgba(180,83,9,.10);color:#b45309}
+html.light .b-red{background:rgba(192,21,42,.08);color:#c0152a}
+html.light .b-replaced{background:rgba(109,40,217,.08);color:#6d28d9}
+html.light .dsec{background:var(--bg3)}
+html.light .dlbl{background:var(--bg3)}
+html.light #login-overlay{background:var(--bg)!important}
+html.light .qs{background:var(--bg3)}
+
 /* ── MONOSPACE ── */
 code, .mono{font-family:'DM Mono',monospace}
 </style>
@@ -699,6 +780,7 @@ code, .mono{font-family:'DM Mono',monospace}
       <div class="tb-kpi"><div class="tb-kpi-v" id="tb-total" style="color:var(--blue)">0</div><div class="tb-kpi-l">Total</div></div>
       <div class="tb-kpi"><div class="tb-kpi-v" id="tb-repair" style="color:var(--amber)">0</div><div class="tb-kpi-l">Repair</div></div>
       <div class="tb-kpi"><div class="tb-kpi-v" id="tb-depts" style="color:var(--purple)">0</div><div class="tb-kpi-l">Depts</div></div>
+      <button class="btn ghost" onclick="toggleTheme()" id="theme-btn" title="Toggle light/dark mode" style="font-size:15px;padding:.35rem .6rem">🌙</button>
       <button class="btn pri" onclick="openAddModal()">➕ Add Asset</button>
     </div>
   </div>
@@ -720,6 +802,9 @@ code, .mono{font-family:'DM Mono',monospace}
       <select class="fsel" id="ft" onchange="resetPg();renderTable()"><option value="">All types</option></select>
       <select class="fsel" id="fd" onchange="resetPg();renderTable()"><option value="">All depts</option></select>
       <select class="fsel" id="fc" onchange="resetPg();renderTable()"><option value="">All status</option></select>
+      <label style="display:flex;align-items:center;gap:.35rem;font-size:12px;color:var(--text2);cursor:pointer;white-space:nowrap;user-select:none">
+        <input type="checkbox" id="show-disposed" onchange="resetPg();renderTable()" style="accent-color:var(--amber)"> Show Disposed
+      </label>
       <button class="btn" onclick="openAddModal()">➕ Add</button>
     </div>
     <div class="tbl-wrap">
@@ -774,10 +859,17 @@ code, .mono{font-family:'DM Mono',monospace}
         <option value="">All events</option>
         <option value="transferred">Transfers</option>
         <option value="repaired">Repairs</option>
+        <option value="serviced">Serviced</option>
+        <option value="inspected">Inspected</option>
         <option value="replaced">Replacements</option>
         <option value="reassigned">Reassignments</option>
         <option value="upgraded">Upgrades</option>
+        <option value="disposed">Disposed</option>
+        <option value="other">Other</option>
       </select>
+      <input type="date" class="fsel" id="hist-from" onchange="renderHistory()" title="From date" style="cursor:pointer">
+      <input type="date" class="fsel" id="hist-to" onchange="renderHistory()" title="To date" style="cursor:pointer">
+      <button class="btn ghost sm" onclick="document.getElementById('hist-from').value='';document.getElementById('hist-to').value='';renderHistory()" title="Clear date filter">✕ All time</button>
     </div>
     <div class="card"><div class="card-hd"><span class="card-title">All Activity</span><button class="btn sm ghost" onclick="exportActivityCSV()" title="Download activity log as CSV">⬇️ Export CSV</button></div>
       <div class="card-bd" id="hist-list" style="max-height:580px;overflow-y:auto"></div>
@@ -801,9 +893,20 @@ code, .mono{font-family:'DM Mono',monospace}
             <label>Filter by Type</label>
             <select class="fsel" id="rpt-type" style="width:100%"><option value="">All Types</option></select>
           </div>
-          <button class="btn pri" onclick="generatePdfReport()" id="pdf-gen-btn" style="height:34px;align-self:flex-end">
-            📥 Generate & Download PDF
-          </button>
+          <div class="ff" style="min-width:130px">
+            <label>From Date</label>
+            <input type="date" class="fsel" id="rpt-from" style="width:100%;cursor:pointer">
+          </div>
+          <div class="ff" style="min-width:130px">
+            <label>To Date</label>
+            <input type="date" class="fsel" id="rpt-to" style="width:100%;cursor:pointer">
+          </div>
+          <div style="display:flex;gap:.5rem;align-self:flex-end">
+            <button class="btn ghost sm" onclick="document.getElementById('rpt-from').value='';document.getElementById('rpt-to').value=''" title="Clear date filter" style="height:34px">✕ All time</button>
+            <button class="btn pri" onclick="generatePdfReport()" id="pdf-gen-btn" style="height:34px">
+              📥 Generate &amp; Download PDF
+            </button>
+          </div>
         </div>
         <div id="pdf-status" style="font-size:12px;min-height:1.4em"></div>
       </div>
@@ -1664,13 +1767,14 @@ function renderTable(){
   var ft=document.getElementById('ft').value;
   var fd=document.getElementById('fd').value;
   var fc=document.getElementById('fc').value;
+  var showDisposed=document.getElementById('show-disposed')&&document.getElementById('show-disposed').checked;
   var filtered=rows.filter(function(r){
-    // Disposed items are hidden from the active inventory view;
-    // they remain in history records for full accountability.
-    if(r['Condition/Status']==='Disposed') return false;
+    var cond=r['Condition/Status']||'';
+    // Hide disposed unless toggle is on
+    if(cond==='Disposed'&&!showDisposed) return false;
     if(ft&&r['Equipment Type']!==ft)return false;
     if(fd&&r['Department/Location']!==fd)return false;
-    if(fc&&r['Condition/Status']!==fc)return false;
+    if(fc&&cond!==fc)return false;
     if(q){
       var haystack=Object.values(r).join(' ').toLowerCase();
       return haystack.indexOf(q)>-1;
@@ -1852,6 +1956,11 @@ function saveAsset(){
     'RAM':gv('a-ram'),'Disk':gv('a-disk'),'Remarks':gv('a-remarks')
   };
   if(!data['Equipment Type']){toast('Equipment Type is required','err');return;}
+
+  // For edits — capture old values before saving so we can auto-log changes
+  var oldRow=null;
+  if(rowNum) oldRow=rows.find(function(x){return x._row===parseInt(rowNum);});
+
   var btn=document.getElementById('asset-save-btn');
   btn.disabled=true; btn.textContent='Saving…';
   var fn=rowNum
@@ -1863,7 +1972,53 @@ function saveAsset(){
     if(res.ok){
       closeModal('ov-asset');
       toast(rowNum?'Asset updated':'Asset added','ok');
-      reload(function(){renderTable();renderDashboard();rebuildFilters();});
+
+      // ── Auto-log meaningful changes ──────────────────────────
+      var autoLogs=[];
+      if(oldRow){
+        var assetDesc=(data['Equipment Type']||'')+(data['Brand/Model']?' '+data['Brand/Model']:'');
+        var serial=data['Serial No.']||oldRow['Serial No.']||'';
+        var today=todayStr();
+
+        var oldStatus=(oldRow['Condition/Status']||'').trim();
+        var newStatus=(data['Condition/Status']||'').trim();
+        if(oldStatus!==newStatus){
+          var evtType='other';
+          if(newStatus==='Disposed') evtType='disposed';
+          else if(newStatus.indexOf('Repair')>-1) evtType='other';
+          else if(oldStatus.indexOf('Repair')>-1 && (newStatus==='Good'||newStatus==='Fair'||newStatus==='New')) evtType='repaired';
+          autoLogs.push({asset:assetDesc,serial:serial,dept:data['Department/Location']||'',
+            event:evtType,note:'Status changed: '+oldStatus+' → '+newStatus,date:today,cost:'',by:'ICT Manager'});
+        }
+
+        var oldDept=(oldRow['Department/Location']||'').trim();
+        var newDept=(data['Department/Location']||'').trim();
+        if(oldDept&&newDept&&oldDept!==newDept){
+          autoLogs.push({asset:assetDesc,serial:serial,dept:newDept,
+            event:'reassigned',note:'Department changed: '+oldDept+' → '+newDept,date:today,cost:'',by:'ICT Manager'});
+        }
+
+        var oldAssign=(oldRow['Assigned To']||'').trim();
+        var newAssign=(data['Assigned To']||'').trim();
+        if(oldAssign!==newAssign&&(oldAssign||newAssign)){
+          autoLogs.push({asset:assetDesc,serial:serial,dept:data['Department/Location']||'',
+            event:'reassigned',note:'Assignment changed: '+(oldAssign||'(none)')+' → '+(newAssign||'(none)'),date:today,cost:'',by:'ICT Manager'});
+        }
+      }
+
+      // Fire auto-logs sequentially then reload
+      function fireNextLog(i){
+        if(i>=autoLogs.length){
+          reload(function(){renderTable();renderDashboard();rebuildFilters();renderHistory();});
+          return;
+        }
+        var l=autoLogs[i];
+        pywebview.api.write_history(l.asset,l.serial,l.dept,l.event,l.note,l.date,l.cost,l.by)
+          .then(function(){fireNextLog(i+1);}).catch(function(){fireNextLog(i+1);});
+      }
+      fireNextLog(0);
+      // ─────────────────────────────────────────────────────────
+
     } else toast(res.error||'Error saving','err');
   });
 }
@@ -2143,8 +2298,12 @@ function doReplace(){
 function renderHistory(){
   var q=(document.getElementById('hist-search').value||'').toLowerCase();
   var ft=document.getElementById('hist-filter').value;
+  var fromVal=document.getElementById('hist-from')?document.getElementById('hist-from').value:'';
+  var toVal=document.getElementById('hist-to')?document.getElementById('hist-to').value:'';
   var items=histItems.filter(function(h){
     if(ft&&h.event!==ft)return false;
+    if(fromVal&&h.date&&h.date<fromVal)return false;
+    if(toVal&&h.date&&h.date>toVal)return false;
     if(q){var s=(h.date+h.asset+h.serial+h.from+h.to+h.event+h.note).toLowerCase();return s.indexOf(q)>-1;}
     return true;
   });
@@ -2180,8 +2339,12 @@ function renderHistory(){
 function exportActivityCSV(){
   var q=(document.getElementById('hist-search').value||'').toLowerCase();
   var ft=document.getElementById('hist-filter').value;
+  var fromVal=document.getElementById('hist-from')?document.getElementById('hist-from').value:'';
+  var toVal=document.getElementById('hist-to')?document.getElementById('hist-to').value:'';
   var items=histItems.filter(function(h){
     if(ft&&h.event!==ft)return false;
+    if(fromVal&&h.date&&h.date<fromVal)return false;
+    if(toVal&&h.date&&h.date>toVal)return false;
     if(q){var s=(h.date+h.asset+h.serial+h.from+h.to+h.event+h.note).toLowerCase();return s.indexOf(q)>-1;}
     return true;
   });
@@ -2222,11 +2385,13 @@ function exportActivityCSV(){
 function generatePdfReport(){
   var dept=document.getElementById('rpt-dept').value||'';
   var type=document.getElementById('rpt-type').value||'';
+  var fromD=document.getElementById('rpt-from')?document.getElementById('rpt-from').value:'';
+  var toD=document.getElementById('rpt-to')?document.getElementById('rpt-to').value:'';
   var btn=document.getElementById('pdf-gen-btn');
   var status=document.getElementById('pdf-status');
   btn.disabled=true; btn.textContent='⏳ Generating PDF…';
   status.style.color='var(--text2)'; status.textContent='Building report, please wait…';
-  pywebview.api.generate_pdf(dept, type).then(function(r){
+  pywebview.api.generate_pdf(dept, type, fromD, toD).then(function(r){
     btn.disabled=false; btn.textContent='📥 Generate & Download PDF';
     var res=JSON.parse(r);
     if(res.ok){
@@ -2302,11 +2467,14 @@ function buildReportFilters(){
 function generateReport(){
   var deptFilter=document.getElementById('rpt-dept').value;
   var typeFilter=document.getElementById('rpt-type').value;
+  var fromFilter=document.getElementById('rpt-from')?document.getElementById('rpt-from').value:'';
+  var toFilter=document.getElementById('rpt-to')?document.getElementById('rpt-to').value:'';
   var now=new Date();
   var dateStr=now.toLocaleDateString('en-GB',{day:'2-digit',month:'long',year:'numeric'});
   var timeStr=now.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
 
   // Filter active inventory (exclude Disposed; Replaced handled separately)
+  // Date range applies to history; asset list is not date-filtered (it's a snapshot)
   var active=rows.filter(function(r){
     if(r['Condition/Status']==='Disposed') return false;
     if(r['Condition/Status']==='Replaced') return false;
@@ -2350,10 +2518,17 @@ function generateReport(){
     if(inRepair) byDeptCount[d].repair++;
   });
 
-  // Recent changes from history (last 90 days)
-  var cutoff=new Date(); cutoff.setDate(cutoff.getDate()-90);
+  // Recent changes from history — filtered by date range (default: last 90 days if no range set)
   var recentHistory=histItems.filter(function(h){
     if(deptFilter&&h.from!==deptFilter&&h.to!==deptFilter) return false;
+    if(fromFilter&&h.date&&h.date<fromFilter) return false;
+    if(toFilter&&h.date&&h.date>toFilter) return false;
+    if(!fromFilter&&!toFilter){
+      // default: last 90 days
+      var cutoff=new Date(); cutoff.setDate(cutoff.getDate()-90);
+      var hd=new Date(h.date);
+      if(!isNaN(hd)&&hd<cutoff) return false;
+    }
     return true;
   }).slice(0,50);
 
@@ -2365,6 +2540,7 @@ function generateReport(){
   });
 
   var title='ICT Asset Report'+(deptFilter?' — '+deptFilter:''+(typeFilter?' — '+typeFilter:''));
+  if(fromFilter||toFilter) title+=' ('+(fromFilter||'start')+' to '+(toFilter||'today')+')';
   var deptCount=Object.keys(byDeptCount).length;
 
   // ── Build type rows ──
@@ -2557,104 +2733,140 @@ function printReport(){
 // INK
 // ══════════════════════════════════════════════════════
 var INK_COLORS={BK:'#a89060',C:'#0ea5e9',LC:'#7dd3fc',M:'#db2777',LM:'#f9a8d4',Y:'#eab308'};
-var INK_MAX={BK:20,C:20,LC:20,M:20,LM:20,Y:20};
-var INK_LOW=5; // ≤5 pieces = Low stock
+var INK_MAX=20; // target per colour per pool
+var INK_LOW=5;  // ≤5 = low alert
 
 function renderInk(){
-  // ── Ink dashboard summary ───────────────────────────
   var INK_NAMES_D={BK:'Black',C:'Cyan',LC:'Lt Cyan',M:'Magenta',LM:'Lt Magenta',Y:'Yellow'};
-  var total=0, low=[], out=[];
-  ['BK','C','LC','M','LM','Y'].forEach(function(code){
-    var s=inkState[code]||{store:0};
-    total+=s.store;
-    if(s.store===0) out.push(INK_NAMES_D[code]);
-    else if(s.store<=INK_LOW) low.push(INK_NAMES_D[code]);
+  var INK_NAMES_FULL={BK:'Black',C:'Cyan',LC:'Light Cyan',M:'Magenta',LM:'Light Magenta',Y:'Yellow'};
+  var CODES=['BK','C','LC','M','LM','Y'];
+
+  // Totals for summary KPIs
+  var totalStore=0, totalIct=0, lowCodes=[], outCodes=[];
+  CODES.forEach(function(code){
+    var s=inkState[code]||{store:0,ictRoom:0};
+    totalStore+=s.store;
+    totalIct+=s.ictRoom;
+    var total=s.store+s.ictRoom;
+    if(total===0) outCodes.push(INK_NAMES_D[code]);
+    else if(total<=INK_LOW) lowCodes.push(INK_NAMES_D[code]);
   });
+
   var dash=document.getElementById('ink-dashboard');
   if(dash){
-    var INK_NAMES_FULL={BK:'Black',C:'Cyan',LC:'Light Cyan',M:'Magenta',LM:'Light Magenta',Y:'Yellow'};
-    // KPI cards
     var kpiRow=
-      '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:.625rem;margin-bottom:.75rem">'+
+      '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:.625rem;margin-bottom:.75rem">'+
       '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:11px;padding:.9rem 1.1rem">'+
-        '<div style="font-size:9.5px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.35rem">Total In Store</div>'+
-        '<div style="font-family:\'Syne\',sans-serif;font-size:28px;font-weight:800;color:var(--text);line-height:1">'+total+'</div>'+
-        '<div style="font-size:10.5px;color:var(--text3);margin-top:.25rem">cartridges across all colours</div>'+
+        '<div style="font-size:9px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.35rem">Store Room</div>'+
+        '<div style="font-family:\'Syne\',sans-serif;font-size:26px;font-weight:800;color:var(--text);line-height:1">'+totalStore+'</div>'+
+        '<div style="font-size:10px;color:var(--text3);margin-top:.25rem">cartridges in store</div>'+
       '</div>'+
-      '<div style="background:var(--bg2);border:1px solid '+(out.length?'rgba(255,77,94,.35)':'var(--border)')+';border-radius:11px;padding:.9rem 1.1rem">'+
-        '<div style="font-size:9.5px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.35rem">Out of Stock</div>'+
-        '<div style="font-family:\'Syne\',sans-serif;font-size:28px;font-weight:800;color:'+(out.length?'var(--red)':'var(--green)')+';line-height:1">'+out.length+'</div>'+
-        '<div style="font-size:10.5px;color:var(--text3);margin-top:.25rem">'+(out.length?out.join(', '):'All colours in stock')+'</div>'+
+      '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:11px;padding:.9rem 1.1rem">'+
+        '<div style="font-size:9px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.35rem">ICT Room</div>'+
+        '<div style="font-family:\'Syne\',sans-serif;font-size:26px;font-weight:800;color:var(--blue);line-height:1">'+totalIct+'</div>'+
+        '<div style="font-size:10px;color:var(--text3);margin-top:.25rem">deployed at printers</div>'+
       '</div>'+
-      '<div style="background:var(--bg2);border:1px solid '+(low.length?'rgba(232,150,10,.35)':'var(--border)')+';border-radius:11px;padding:.9rem 1.1rem">'+
-        '<div style="font-size:9.5px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.35rem">Running Low <span style="font-weight:400;opacity:.6;text-transform:none;letter-spacing:0">(≤'+INK_LOW+')</span></div>'+
-        '<div style="font-family:\'Syne\',sans-serif;font-size:28px;font-weight:800;color:'+(low.length?'var(--amber)':'var(--green)')+';line-height:1">'+low.length+'</div>'+
-        '<div style="font-size:10.5px;color:var(--text3);margin-top:.25rem">'+(low.length?low.join(', '):'All colours above '+INK_LOW+' pieces')+'</div>'+
+      '<div style="background:var(--bg2);border:1px solid '+(outCodes.length?'rgba(255,77,94,.35)':'var(--border)')+';border-radius:11px;padding:.9rem 1.1rem">'+
+        '<div style="font-size:9px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.35rem">Out of Stock</div>'+
+        '<div style="font-family:\'Syne\',sans-serif;font-size:26px;font-weight:800;color:'+(outCodes.length?'var(--red)':'var(--green)')+';line-height:1">'+outCodes.length+'</div>'+
+        '<div style="font-size:10px;color:var(--text3);margin-top:.25rem">'+(outCodes.length?outCodes.join(', '):'All colours available')+'</div>'+
+      '</div>'+
+      '<div style="background:var(--bg2);border:1px solid '+(lowCodes.length?'rgba(232,150,10,.35)':'var(--border)')+';border-radius:11px;padding:.9rem 1.1rem">'+
+        '<div style="font-size:9px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.35rem">Running Low <span style="opacity:.5">(≤'+INK_LOW+')</span></div>'+
+        '<div style="font-family:\'Syne\',sans-serif;font-size:26px;font-weight:800;color:'+(lowCodes.length?'var(--amber)':'var(--green)')+';line-height:1">'+lowCodes.length+'</div>'+
+        '<div style="font-size:10px;color:var(--text3);margin-top:.25rem">'+(lowCodes.length?lowCodes.join(', '):'All above '+INK_LOW+' pieces')+'</div>'+
       '</div>'+
       '</div>';
-    // Colour stock visual panel with segmented bars
-    var stockRows=['BK','C','LC','M','LM','Y'].map(function(code){
-      var s=inkState[code]||{store:0};
-      var maxQ=INK_MAX[code]||20;
-      var pct=Math.min(100,Math.round((s.store/maxQ)*100));
+
+    // Stock levels panel
+    var stockRows=CODES.map(function(code){
+      var s=inkState[code]||{store:0,ictRoom:0};
+      var total=s.store+s.ictRoom;
+      var maxTotal=INK_MAX*2;
+      var pctStore=Math.min(100,Math.round((s.store/INK_MAX)*100));
+      var pctIct=Math.min(100,Math.round((s.ictRoom/INK_MAX)*100));
       var col=INK_COLORS[code]||'#888';
-      var isOut=s.store===0, isLow=s.store<=INK_LOW&&s.store>0;
-      var barCol=isOut?'var(--red)':isLow?'var(--amber)':col;
-      var segs=10, filled=Math.round(pct/10), segsHtml='';
+      var isOut=total===0, isLow=total<=INK_LOW&&total>0;
+      var statusCol=isOut?'var(--red)':isLow?'var(--amber)':'var(--green)';
+      var segs=10;
+      var storeSegs=Math.round((s.store/INK_MAX)*segs);
+      var ictSegs=Math.round((s.ictRoom/INK_MAX)*segs);
+      var segsHtml='';
       for(var si2=0;si2<segs;si2++){
-        segsHtml+='<div style="flex:1;height:7px;border-radius:2px;margin-right:2px;background:'+(si2<filled?barCol:'var(--bg4)')+';transition:background .3s"></div>';
+        var bg=si2<storeSegs?col:si2<(storeSegs+ictSegs)?'rgba(255,255,255,.25)':'var(--bg4)';
+        segsHtml+='<div style="flex:1;height:7px;border-radius:2px;margin-right:2px;background:'+bg+';transition:background .3s" title="'+(si2<storeSegs?'Store':'si2<storeSegs+ictSegs'?'ICT Room':'empty')+'"></div>';
       }
       return '<div style="display:flex;align-items:center;gap:.875rem;padding:.45rem 0;border-bottom:1px solid var(--border)">'+
         '<div style="display:flex;align-items:center;gap:.45rem;min-width:110px">'+
           '<div style="width:11px;height:11px;border-radius:50%;background:'+col+';flex-shrink:0"></div>'+
           '<span style="font-size:12px;font-weight:700;color:var(--text)">'+INK_NAMES_FULL[code]+'</span>'+
         '</div>'+
-        '<div style="flex:1;display:flex;margin:0 .25rem">'+segsHtml+'</div>'+
-        '<div style="min-width:52px;text-align:right">'+
-          '<span style="font-family:\'DM Mono\',monospace;font-size:12px;font-weight:700;color:'+barCol+'">'+s.store+' / '+maxQ+'</span>'+
-        '</div>'+
-        '<div style="min-width:36px;text-align:right">'+
-          '<span style="font-size:10.5px;color:var(--text3)">'+pct+'%</span>'+
+        '<div style="flex:1;display:flex;margin:0 .25rem" title="Solid=Store, Faded=ICT Room">'+segsHtml+'</div>'+
+        '<div style="min-width:140px;text-align:right;font-size:11px">'+
+          '<span style="font-family:\'DM Mono\',monospace;font-weight:700;color:'+col+'">'+s.store+'</span>'+
+          '<span style="color:var(--text3)"> store</span>'+
+          '<span style="color:var(--border2);margin:0 .3rem">+</span>'+
+          '<span style="font-family:\'DM Mono\',monospace;font-weight:700;color:rgba(255,255,255,.5)">'+s.ictRoom+'</span>'+
+          '<span style="color:var(--text3)"> ict</span>'+
+          '<span style="margin-left:.4rem;font-weight:800;color:'+statusCol+'">= '+total+'</span>'+
         '</div>'+
       '</div>';
     }).join('');
-    var stockPanel=
+    dash.innerHTML=kpiRow+
       '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:11px;padding:1rem 1.25rem;margin-bottom:.75rem">'+
-      '<div style="font-size:9.5px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.75rem">Stock Levels by Colour &nbsp;<span style="font-weight:400;opacity:.5;text-transform:none;letter-spacing:0">Target: '+INK_MAX['BK']+' &nbsp;·&nbsp; Low alert: ≤'+INK_LOW+'</span></div>'+
+      '<div style="font-size:9.5px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.75rem">'+
+        'Stock by Colour &nbsp;<span style="font-weight:400;opacity:.5;text-transform:none;letter-spacing:0">Solid bar = Store &nbsp;·&nbsp; Faded = ICT Room &nbsp;·&nbsp; Low alert: ≤'+INK_LOW+'</span>'+
+      '</div>'+
       stockRows+
       '</div>';
-    dash.innerHTML=kpiRow+stockPanel;
   }
+
+  // Individual ink cards
   var html='';
-  ['BK','C','LC','M','LM','Y'].forEach(function(code){
-    var s=inkState[code]||{store:0,bigIct:1,smallIct:1};
-    var pct=Math.min(100,Math.round((s.store/(INK_MAX[code]||20))*100));
+  CODES.forEach(function(code){
+    var s=inkState[code]||{store:0,ictRoom:0};
+    var total=s.store+s.ictRoom;
+    var pct=Math.min(100,Math.round((total/(INK_MAX*2))*100));
     var col=INK_COLORS[code]||'#888';
-    var isOut=s.store===0, isLow=s.store<=INK_LOW&&s.store>0;
+    var isOut=total===0, isLow=total<=INK_LOW&&total>0;
     var statusCol=isOut?'var(--red)':isLow?'var(--amber)':'var(--green)';
     var names={BK:'Black',C:'Cyan',LC:'Lt Cyan',M:'Magenta',LM:'Lt Magenta',Y:'Yellow'};
-    html+='<div class="ink-card">'+
+    html+=
+    '<div class="ink-card">'+
       '<div class="ink-hd"><div class="ink-name-row">'+
         '<div class="ink-dot" style="background:'+col+'"></div>'+
         '<div><div class="ink-label">'+names[code]+'</div><div class="ink-code">'+code+'</div></div>'+
       '</div></div>'+
-      '<div class="ink-big-num" style="color:'+col+'">'+s.store+'</div>'+
-      '<div class="ink-sub">cartridges in store &nbsp;<span style="font-weight:700;color:'+statusCol+'">'+pct+'%</span></div>'+
-      '<div class="bar-track"><div class="bar-fill" style="width:'+pct+'%;background:'+(isOut?'var(--red)':isLow?'var(--amber)':col)+'"></div></div>'+
-      '<div class="ink-printers">'+
-        '<span>Big ICT: <input type="number" id="ink-big-'+code+'" value="'+s.bigIct+'" min="0" onchange="inkSetPrinter(\''+code+'\')" onclick="event.stopPropagation()"></span>'+
-        '<span>Small ICT: <input type="number" id="ink-sml-'+code+'" value="'+s.smallIct+'" min="0" onchange="inkSetPrinter(\''+code+'\')" onclick="event.stopPropagation()"></span>'+
+      // Two pools display
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:.4rem;margin-bottom:.6rem">'+
+        '<div style="background:var(--bg3);border-radius:8px;padding:.5rem .7rem;text-align:center">'+
+          '<div style="font-size:9px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.2rem">Store</div>'+
+          '<div style="font-family:\'Syne\',sans-serif;font-size:22px;font-weight:800;color:'+col+';line-height:1">'+s.store+'</div>'+
+        '</div>'+
+        '<div style="background:var(--bg3);border-radius:8px;padding:.5rem .7rem;text-align:center;border:1px solid rgba(255,255,255,.06)">'+
+          '<div style="font-size:9px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.2rem">ICT Room</div>'+
+          '<div style="font-family:\'Syne\',sans-serif;font-size:22px;font-weight:800;color:rgba(255,255,255,.4);line-height:1">'+s.ictRoom+'</div>'+
+        '</div>'+
       '</div>'+
-      '<div class="ink-controls">'+
-        '<button class="ic-btn minus" onclick="inkAct(\''+code+'\',\'use\')">−</button>'+
-        '<input type="number" class="ic-qty" id="ink-qty-'+code+'" value="1" min="1" max="20">'+
-        '<button class="ic-btn plus" onclick="inkAct(\''+code+'\',\'restock\')">＋</button>'+
-        '<span class="ic-pct">'+pct+'%</span>'+
+      '<div style="font-size:10.5px;color:var(--text2);margin-bottom:.5rem;text-align:center">'+
+        'Total: <span style="font-weight:700;color:'+statusCol+'">'+total+'</span> cartridges'+
+      '</div>'+
+      '<div class="bar-track" style="margin-bottom:.75rem">'+
+        '<div class="bar-fill" style="width:'+Math.min(100,Math.round((s.store/INK_MAX)*100))+'%;background:'+col+';border-radius:4px 0 0 4px;float:left"></div>'+
+        '<div class="bar-fill" style="width:'+Math.min(100-Math.min(100,Math.round((s.store/INK_MAX)*100)),Math.round((s.ictRoom/INK_MAX)*100))+'%;background:rgba(255,255,255,.2);float:left"></div>'+
+      '</div>'+
+      // Three actions: Restock Store | Move to ICT | Use from ICT
+      '<div style="display:flex;align-items:center;gap:.35rem;margin-bottom:.4rem">'+
+        '<input type="number" class="ic-qty" id="ink-qty-'+code+'" value="1" min="1" max="'+INK_MAX+'">'+
+        '<button class="ic-btn plus" onclick="inkAct(\''+code+'\',\'restock\')" title="Add to Store" style="flex:1;width:auto;font-size:10px;padding:0 6px">+Store</button>'+
+        '<button class="ic-btn" onclick="inkAct(\''+code+'\',\'move_to_ict\')" title="Move from Store to ICT Room" style="flex:1;width:auto;font-size:10px;padding:0 4px;border-color:rgba(255,255,255,.15)">→ICT</button>'+
+        '<button class="ic-btn minus" onclick="inkAct(\''+code+'\',\'use\')" title="Use (consume from ICT Room then Store)" style="flex:1;width:auto;font-size:10px;padding:0 6px">Use</button>'+
       '</div>'+
     '</div>';
   });
   document.getElementById('ink-grid').innerHTML=html;
-  // ink log
+
+  // Ink log
   var inkLog=logItems.filter(function(l){return l.action==='INK';}).slice(0,20);
   document.getElementById('ink-log-list').innerHTML=inkLog.map(function(l){
     return '<div class="log-item li-INK"><div class="log-ico">🖨️</div>'+
@@ -2664,21 +2876,18 @@ function renderInk(){
 
 function inkAct(code, action){
   var qty=parseInt(document.getElementById('ink-qty-'+code).value)||1;
-  var big=parseInt(document.getElementById('ink-big-'+code).value)||0;
-  var sml=parseInt(document.getElementById('ink-sml-'+code).value)||0;
-  pywebview.api.ink_action(code,action,qty,big,sml,'').then(function(r){
+  // Compute projected ictRoom after action for the snapshot
+  var s=inkState[code]||{store:0,ictRoom:0};
+  var ictAfter=s.ictRoom;
+  if(action==='move_to_ict') ictAfter=s.ictRoom+Math.min(qty,s.store);
+  else if(action==='use'){
+    var fromIct=Math.min(qty,s.ictRoom);
+    ictAfter=s.ictRoom-fromIct;
+  }
+  pywebview.api.ink_action(code,action,qty,ictAfter,'').then(function(r){
     var res=JSON.parse(r);
     if(res.ok){ toast('Ink updated','ok'); reload(function(){renderInk();}); }
     else toast(res.error||'Error','err');
-  });
-}
-
-function inkSetPrinter(code){
-  var big=parseInt(document.getElementById('ink-big-'+code).value)||0;
-  var sml=parseInt(document.getElementById('ink-sml-'+code).value)||0;
-  pywebview.api.ink_action(code,'set_printer',0,big,sml,'Printer count updated').then(function(r){
-    var res=JSON.parse(r);
-    if(res.ok){ reload(function(){renderInk();}); }
   });
 }
 
@@ -2742,30 +2951,23 @@ function removeCfg(key, val){
 // ══════════════════════════════════════════════════════
 function doLogout(){
   if(!confirm('Log out now? You will need your PIN to get back in.')) return;
-  // Hide app, clear state, show login
+  // Log before clearing state while API still has context
+  try { pywebview.api.log_action('LOGOUT','Session ended — user logged out'); } catch(e){}
+  // Reset in-memory state
+  rows=[]; inkState={}; logItems=[]; histItems=[];
+  // Show login overlay, hide app
   document.getElementById('app').style.display='none';
   document.getElementById('login-overlay').style.display='flex';
   document.getElementById('login-err').style.display='none';
   document.getElementById('login-form').style.display='';
   document.getElementById('setup-form').style.display='none';
-  // Reset in-memory state so stale data can't be read
-  rows=[]; inkState={}; logItems=[]; histItems=[];
-  // Clear and focus pin input — use multiple attempts for pywebview focus reliability
+  // Clear pin and focus after overlay is visible
   var pinEl=document.getElementById('pin-input');
   pinEl.value='';
   pinEl.disabled=false;
-  pinEl.blur();
-  setTimeout(function(){
-    pinEl.value='';
-    pinEl.disabled=false;
-    pinEl.style.pointerEvents='';
-    pinEl.focus();
-    // Second attempt in case pywebview deferred the first
-    setTimeout(function(){ pinEl.focus(); }, 250);
-  }, 200);
-  toast('Logged out successfully','info');
-  // Log logout asynchronously (best-effort — data already cleared)
-  try { pywebview.api.log_action('LOGOUT','Session ended — user logged out'); } catch(e){}
+  pinEl.style.pointerEvents='';
+  setTimeout(function(){ pinEl.focus(); }, 150);
+  toast('Logged out','info');
 }
 
 function changePin(){
@@ -2853,6 +3055,32 @@ if(!CanvasRenderingContext2D.prototype.roundRect){
     this.closePath();
   };
 }
+
+// ══════════════════════════════════════════════════════
+// THEME
+// ══════════════════════════════════════════════════════
+function applyTheme(light){
+  if(light){
+    document.documentElement.classList.add('light');
+    var btn=document.getElementById('theme-btn');
+    if(btn) btn.textContent='☀️';
+  } else {
+    document.documentElement.classList.remove('light');
+    var btn=document.getElementById('theme-btn');
+    if(btn) btn.textContent='🌙';
+  }
+}
+function toggleTheme(){
+  var isLight=document.documentElement.classList.contains('light');
+  try{ localStorage.setItem('ict-theme', isLight?'dark':'light'); }catch(e){}
+  applyTheme(!isLight);
+}
+// Apply on load
+(function(){
+  var saved='dark';
+  try{ saved=localStorage.getItem('ict-theme')||'dark'; }catch(e){}
+  applyTheme(saved==='light');
+})();
 
 window.addEventListener('pywebviewready', function(){
   initLogin();

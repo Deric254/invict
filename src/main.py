@@ -304,23 +304,35 @@ class ExcelEngine:
     def _read_ink(self, wb):
         ws    = wb[SHEET_INK]
         rows  = list(ws.values)
-        state = {k: {"store": INK_DEFAULTS[k], "bigIct": 1, "smallIct": 1} for k in INK_CODES}
+        # state: store = storeroom qty, ictRoom = ICT room qty (deployed from store)
+        state = {k: {"store": INK_DEFAULTS[k], "ictRoom": 0} for k in INK_CODES}
         for row in rows[1:]:
             if not row or not row[1]: continue
             code   = str(row[1]).strip()
             action = str(row[3]).strip() if len(row)>3 and row[3] else ''
             try: qty = int(float(str(row[4]))) if len(row)>4 and row[4] else 0
             except: qty = 0
-            try: big = int(float(str(row[5]))) if len(row)>5 and row[5] else None
-            except: big = None
-            try: sml = int(float(str(row[6]))) if len(row)>6 and row[6] else None
-            except: sml = None
+            # bigIct column now stores ictRoom qty snapshot (written on move_to_ict/use)
+            try: ict_snap = int(float(str(row[5]))) if len(row)>5 and row[5] not in (None,'','None') else None
+            except: ict_snap = None
             if code in state:
-                if action == 'restock': state[code]['store'] += qty
-                elif action == 'use':   state[code]['store'] = max(0, state[code]['store'] - qty)
-                elif action == 'set_printer': pass  # only updates printer counts below
-                if big is not None: state[code]['bigIct']   = big
-                if sml is not None: state[code]['smallIct'] = sml
+                if action == 'restock':
+                    state[code]['store'] += qty
+                elif action == 'move_to_ict':
+                    # Move from store to ICT room
+                    state[code]['store']   = max(0, state[code]['store'] - qty)
+                    state[code]['ictRoom'] += qty
+                elif action == 'use':
+                    # Use from ICT room first, then store
+                    from_ict = min(qty, state[code]['ictRoom'])
+                    remaining = qty - from_ict
+                    state[code]['ictRoom'] = max(0, state[code]['ictRoom'] - from_ict)
+                    state[code]['store']   = max(0, state[code]['store'] - remaining)
+                elif action == 'set_printer':
+                    pass
+                # If a snapshot of ictRoom was recorded, trust it (keeps state consistent)
+                if ict_snap is not None and action in ('move_to_ict','use','set_printer'):
+                    state[code]['ictRoom'] = ict_snap
         return state
 
     def _read_log(self, wb):
@@ -443,28 +455,56 @@ class ExcelEngine:
             wb = openpyxl.load_workbook(MASTER_XL)
             by_val = by if by and by.strip() else "ICT Manager"
             wb[SHEET_HISTORY].append([date, asset_desc, serial, dept, dept, event, note, by_val])
-            if event == 'repaired':
+
+            # For events that change asset state, update the Inventory row too
+            STATUS_CHANGE_EVENTS = {'repaired', 'disposed', 'replaced', 'upgraded'}
+            if event in STATUS_CHANGE_EVENTS or event == 'reassigned':
                 ws = wb[SHEET_INV]
                 h  = [ws.cell(1,c).value for c in range(1, ws.max_column+1)]
-                try: ser_col  = h.index("Serial No.")+1
-                except: ser_col = None
-                try: cond_col = h.index("Condition/Status")+1
-                except: cond_col = None
-                if ser_col and cond_col:
+                def col_idx(name):
+                    try: return h.index(name)+1
+                    except ValueError: return None
+                ser_col   = col_idx("Serial No.")
+                cond_col  = col_idx("Condition/Status")
+                assign_col= col_idx("Assigned To")
+                dept_col  = col_idx("Department/Location")
+
+                if ser_col:
                     for row in range(2, ws.max_row+1):
-                        if str(ws.cell(row,ser_col).value or '').strip() == serial.strip():
-                            if ws.cell(row,cond_col).value in ["Fair (Needs Repair)","Needs Repair"]:
-                                ws.cell(row,cond_col).value = "Good"
+                        if str(ws.cell(row, ser_col).value or '').strip() == serial.strip():
+                            cur_cond = str(ws.cell(row, cond_col).value or '') if cond_col else ''
+                            if event == 'repaired' and cond_col:
+                                if 'Repair' in cur_cond or cur_cond in ('Fair (Needs Repair)', 'Needs Repair'):
+                                    ws.cell(row, cond_col).value = 'Good'
+                            elif event == 'disposed' and cond_col:
+                                ws.cell(row, cond_col).value = 'Disposed'
+                            elif event == 'replaced' and cond_col:
+                                ws.cell(row, cond_col).value = 'Replaced'
+                            elif event == 'upgraded' and cond_col:
+                                # Mark as Good after upgrade
+                                ws.cell(row, cond_col).value = 'Good'
+                            elif event == 'reassigned':
+                                # Extract new assignee from note if present e.g. "Reassigned to John"
+                                import re as _re
+                                m = _re.search(r'(?:to|→)\s*(.+?)(?:\s*\[|$)', note, _re.IGNORECASE)
+                                if m and assign_col:
+                                    ws.cell(row, assign_col).value = m.group(1).strip()
                             break
+
             self._write_log(wb, event.upper(), f"{event} on {asset_desc}: {note[:80]}")
             wb.save(MASTER_XL); wb.close()
 
-    def write_ink(self, code, action, qty, big, sml, note=''):
+    def write_ink(self, code, action, qty, ict_room_after, note=''):
         with self._lock:
             wb = openpyxl.load_workbook(MASTER_XL)
-            wb[SHEET_INK].append([now(), code, INK_NAMES.get(code,code), action, qty, big, sml, note])
-            if action == 'set_printer':
-                self._write_log(wb, 'INK', f"Printer counts updated — {INK_NAMES.get(code,code)} ({code}): Big ICT={big}, Small ICT={sml}")
+            # Columns: Timestamp, Code, Name, Action, Qty, ICT Room (snapshot), _, Note
+            wb[SHEET_INK].append([now(), code, INK_NAMES.get(code,code), action, qty, ict_room_after, 0, note])
+            if action == 'restock':
+                self._write_log(wb, 'INK', f"Ink restocked to store: {qty}x {INK_NAMES.get(code,code)} ({code})")
+            elif action == 'move_to_ict':
+                self._write_log(wb, 'INK', f"Ink moved Store→ICT Room: {qty}x {INK_NAMES.get(code,code)} ({code})")
+            elif action == 'use':
+                self._write_log(wb, 'INK', f"Ink used: {qty}x {INK_NAMES.get(code,code)} ({code})")
             else:
                 self._write_log(wb, 'INK', f"Ink {action}: {qty}x {INK_NAMES.get(code,code)} ({code})")
             wb.save(MASTER_XL); wb.close()
@@ -584,14 +624,20 @@ class Api:
         except Exception as e:
             return json.dumps({"ok": False, "error": str(e)})
 
-    def ink_action(self, code, action, qty, big, sml, note):
+    def ink_action(self, code, action, qty, ict_room_after=0, note=''):
         try:
+            qty = int(qty) if qty else 0
+            ict_room_after = int(ict_room_after) if ict_room_after else 0
             if action == 'use':
-                cur = self.engine.load_all()['ink'].get(code, {}).get('store', 0)
-                if cur < int(qty):
-                    return json.dumps({"ok": False, "error": f"Only {cur} in store"})
-            safe_int = lambda v, d=0: int(v) if v is not None else d
-            self.engine.write_ink(code, action, safe_int(qty), safe_int(big), safe_int(sml), note)
+                state = self.engine.load_all()['ink'].get(code, {})
+                total_avail = state.get('ictRoom', 0) + state.get('store', 0)
+                if total_avail < qty:
+                    return json.dumps({"ok": False, "error": f"Only {total_avail} available (ICT Room + Store)"})
+            elif action == 'move_to_ict':
+                state = self.engine.load_all()['ink'].get(code, {})
+                if state.get('store', 0) < qty:
+                    return json.dumps({"ok": False, "error": f"Only {state.get('store',0)} in store"})
+            self.engine.write_ink(code, action, qty, ict_room_after, note)
             return json.dumps({"ok": True})
         except Exception as e:
             return json.dumps({"ok": False, "error": str(e)})
@@ -604,7 +650,7 @@ class Api:
         except Exception as e:
             return json.dumps({"ok": False, "error": str(e)})
 
-    def generate_pdf(self, dept_filter='', type_filter=''):
+    def generate_pdf(self, dept_filter='', type_filter='', date_from='', date_to=''):
         """Generate PDF report, return base64 content for browser download."""
         try:
             import os, base64
@@ -613,18 +659,15 @@ class Api:
             ts = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
             fname = f'ICT_Report_{ts}.pdf'
             out_path = os.path.join(out_dir, fname)
-            # Look for logo.png next to main.py
             logo_path = ''
             for lname in ['logo.png','logo.jpg','logo.jpeg','LOGO.PNG','LOGO.JPG']:
                 candidate = os.path.join(BASE_DIR, lname)
                 if os.path.exists(candidate):
                     logo_path = candidate
                     break
-            result = generate_pdf_report(self.engine, out_path, dept_filter, type_filter, logo_path)
+            result = generate_pdf_report(self.engine, out_path, dept_filter, type_filter, logo_path, date_from, date_to)
             if result['ok']:
                 result['filename'] = fname
-                # Read the PDF bytes and return as base64 so the JS side
-                # can trigger a real Save-As download in any mode (pywebview/Electron/browser)
                 with open(out_path, 'rb') as f:
                     result['b64'] = base64.b64encode(f.read()).decode('ascii')
             return json.dumps(result)
@@ -1005,7 +1048,7 @@ def run_desktop(api, ui_path):
 # ════════════════════════════════════════════
 def generate_pdf_report(engine: "ExcelEngine", output_path: str,
                         dept_filter: str = "", type_filter: str = "",
-                        logo_path: str = "") -> dict:
+                        logo_path: str = "", date_from: str = "", date_to: str = "") -> dict:
     """
     Generate a concise 2-page professional ICT Asset Report.
     Page 1 : Header + KPI strip + Executive Summary + Equipment table + Department table
@@ -1076,7 +1119,22 @@ def generate_pdf_report(engine: "ExcelEngine", output_path: str,
         def pdate(s):
             try: return datetime.datetime.strptime(str(s)[:10],'%Y-%m-%d').date()
             except: return None
-        recent = [h for h in hist_items if pdate(h.get('date','')) and pdate(h.get('date','')) >= cutoff]
+        # Apply date range: if specified use it, else default to last 90 days
+        def in_range(h):
+            d = pdate(h.get('date',''))
+            if d is None: return False
+            if date_from:
+                try:
+                    if d < datetime.datetime.strptime(date_from,'%Y-%m-%d').date(): return False
+                except: pass
+            if date_to:
+                try:
+                    if d > datetime.datetime.strptime(date_to,'%Y-%m-%d').date(): return False
+                except: pass
+            if not date_from and not date_to:
+                if d < cutoff: return False
+            return True
+        recent = [h for h in hist_items if in_range(h)]
 
         total_cost = 0.0
         for h in recent:
